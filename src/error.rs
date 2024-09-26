@@ -6,6 +6,9 @@ use crate::parser::Rule;
 pub enum ParseError {
     #[error("unsupported parse rule {0}")]
     UnsupportedRule(String),
+
+    #[error("Unhandled {0}")]
+    Unhandled(String),
 }
 
 #[derive(Error, Debug)]
@@ -14,6 +17,9 @@ pub enum ConversionError {
     InvalidType(String),
     #[error("unsupported attribute {0}")]
     UnsupportedAttribute(String),
+
+    #[error("missing {0}")]
+    Missing(String),
 }
 
 #[derive(Error, Debug)]

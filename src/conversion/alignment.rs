@@ -3,7 +3,7 @@ use crate::{
     parser::{Attribute, Value},
 };
 
-impl TryInto<iced::alignment::Vertical> for Value {
+impl TryInto<iced::alignment::Vertical> for &Value {
     type Error = Error;
 
     fn try_into(self) -> Result<iced::alignment::Vertical, Self::Error> {
@@ -16,22 +16,22 @@ impl TryInto<iced::alignment::Vertical> for Value {
                     "Expecting top, center, or bottom for Vertical alignment".into(),
                 ))),
             },
-            Value::Number(_) => todo!(),
-            Value::Boolean(_) => todo!(),
-            Value::Null => todo!(),
+            _ => Err(Error::Conversion(ConversionError::InvalidType(
+                "Expecting Value::String".into(),
+            ))),
         }
     }
 }
 
-impl TryInto<iced::alignment::Vertical> for Attribute {
+impl TryInto<iced::alignment::Vertical> for &Attribute {
     type Error = Error;
 
     fn try_into(self) -> Result<iced::alignment::Vertical, Self::Error> {
-        self.value.try_into()
+        (&self.value).try_into()
     }
 }
 
-impl TryInto<iced::alignment::Horizontal> for Value {
+impl TryInto<iced::alignment::Horizontal> for &Value {
     type Error = Error;
 
     fn try_into(self) -> Result<iced::alignment::Horizontal, Self::Error> {
@@ -44,17 +44,17 @@ impl TryInto<iced::alignment::Horizontal> for Value {
                     "Expecting left, center, or right for Horizontal alignment".into(),
                 ))),
             },
-            Value::Number(_) => todo!(),
-            Value::Boolean(_) => todo!(),
-            Value::Null => todo!(),
+            _ => Err(Error::Conversion(ConversionError::InvalidType(
+                "Expecting Value::String".into(),
+            ))),
         }
     }
 }
 
-impl TryInto<iced::alignment::Horizontal> for Attribute {
+impl TryInto<iced::alignment::Horizontal> for &Attribute {
     type Error = Error;
 
     fn try_into(self) -> Result<iced::alignment::Horizontal, Self::Error> {
-        self.value.try_into()
+        (&self.value).try_into()
     }
 }

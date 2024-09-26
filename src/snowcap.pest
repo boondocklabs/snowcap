@@ -17,7 +17,9 @@ pair       = { label ~ ":" ~ value }
 attributes = { pair ~ ("," ~ pair)* }
 
 element_value =  { value }
-value         = _{ string | number | boolean | null }
+value         = _{ string | number | boolean | null | data_source }
+
+data_source = { label ~ "!" ~ "(" ~ string ~ ")" }
 
 boolean = { "true" | "false" }
 

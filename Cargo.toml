@@ -10,7 +10,13 @@ readme = "README.md"
 
 [dependencies]
 #iced = { git = "https://github.com/iced-rs/iced.git", version = "0.14.0-dev" }
-iced = { version = "0.13.1" }
+iced = { version = "0.13.1", features = [
+    "qr_code",
+    "svg",
+    "canvas",
+    "advanced",
+    "image",
+] }
 notify = "6.1.1"
 pest = "2.7.13"
 pest_derive = "2.7.13"

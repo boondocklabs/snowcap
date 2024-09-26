@@ -25,6 +25,7 @@
             {<width:"fill", height:"fill", align-x:"center", align-y:"center">
                 |<align:"center">[
                     text<size:50>("Center"),
+                    qr-code<cell-size:10>(qr!("https://iced.rs")),
                     button(text<size:20>("Text in a Button")),
                     toggler<toggled:true, size:30>()
                 ]
@@ -33,7 +34,10 @@
             rule-vertical<width:2>(),
 
             {<width:200, align-x:"center">
-                text<size:24>("Right!")
+                |[
+                    text<size:24>("Right!"),
+                    text(file!("README.md"))
+                ]
             }
         ]
     ]

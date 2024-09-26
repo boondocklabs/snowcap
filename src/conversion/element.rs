@@ -1,16 +1,38 @@
 use iced::{
-    widget::{Button, Column, Container, Row, Rule, Space, Stack, Text, Toggler},
+    widget::{
+        text::IntoFragment, Button, Column, Container, QRCode, Row, Rule, Space, Stack, Text,
+        Toggler,
+    },
     Element, Length, Pixels,
 };
 use tracing::debug;
 
 use crate::{
     error::{ConversionError, Error},
-    parser::{Attribute, Value},
+    parser::Value,
     MarkupType,
 };
 
-impl<'a, M> TryInto<Element<'a, M>> for MarkupType
+impl<'a> IntoFragment<'a> for &MarkupType {
+    fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
+        match self {
+            MarkupType::Value(value) => match value {
+                Value::String(s) => s.clone().into(),
+                Value::Number(n) => format!("{n}").into(),
+                Value::Boolean(b) => format!("{b}").into(),
+                Value::Null => format!("null").into(),
+                Value::DataSource {
+                    name,
+                    value,
+                    provider: _,
+                } => format!("DATA {name}:{value}").into(),
+            },
+            _ => "Expecting MarkupType::Value".into(),
+        }
+    }
+}
+
+impl<'a, M> TryInto<Element<'a, M>> for &'a MarkupType
 where
     M: 'a + Clone,
 {
@@ -25,11 +47,7 @@ where
                 content,
             } => match name.as_str() {
                 "text" => {
-                    let mut text = if let MarkupType::Value(Value::String(str)) = *content {
-                        Text::new(str)
-                    } else {
-                        Text::new("Bad value")
-                    };
+                    let mut text = Text::new(&**content);
 
                     for attr in attrs {
                         match attr.name.as_str() {
@@ -45,21 +63,17 @@ where
                 }
 
                 "space" => {
-                    let width: Length = attrs
-                        .get("width")
-                        .unwrap_or(Attribute {
-                            name: "width".to_string(),
-                            value: Value::Number(0.0),
-                        })
-                        .try_into()?;
+                    let width: Length = if let Some(width) = attrs.get("width") {
+                        width.try_into()?
+                    } else {
+                        Length::Fixed(0.0)
+                    };
 
-                    let height: Length = attrs
-                        .get("height")
-                        .unwrap_or(Attribute {
-                            name: "height".to_string(),
-                            value: Value::Number(0.0),
-                        })
-                        .try_into()?;
+                    let height: Length = if let Some(height) = attrs.get("height") {
+                        height.try_into()?
+                    } else {
+                        Length::Fixed(0.0)
+                    };
 
                     let space = Space::new(width, height);
 
@@ -67,7 +81,7 @@ where
                 }
 
                 "button" => {
-                    let content: Element<'a, M> = (*content).try_into()?;
+                    let content: Element<'a, M> = (&**content).try_into()?;
 
                     let button = Button::new(content);
 
@@ -92,13 +106,11 @@ where
                 }
 
                 "toggler" => {
-                    let is_toggled: bool = attrs
-                        .get("toggled")
-                        .unwrap_or(Attribute {
-                            name: "toggled".into(),
-                            value: Value::Boolean(false),
-                        })
-                        .try_into()?;
+                    let is_toggled: bool = if let Some(width) = attrs.get("toggled") {
+                        width.try_into()?
+                    } else {
+                        false
+                    };
 
                     let mut toggler = Toggler::new(is_toggled);
 
@@ -115,6 +127,30 @@ where
                     Ok(toggler.into())
                 }
 
+                "qr-code" => {
+                    if let MarkupType::Value(Value::DataSource {
+                        name: _,
+                        value: _,
+                        provider,
+                    }) = &**content
+                    {
+                        let mut qr: QRCode = QRCode::new(provider.try_into().unwrap());
+
+                        for attr in attrs {
+                            qr = match attr.name.as_str() {
+                                "cell-size" => {
+                                    let cell_size: u16 = attr.try_into()?;
+                                    qr.cell_size(cell_size)
+                                }
+                                _ => qr,
+                            };
+                        }
+
+                        Ok(qr.into())
+                    } else {
+                        Err(Error::Conversion(ConversionError::Missing("data".into())))
+                    }
+                }
                 _ => {
                     return Err(Error::Conversion(ConversionError::UnsupportedAttribute(
                         format!("Unhandled element type {name}"),
@@ -122,52 +158,52 @@ where
                 }
             },
             MarkupType::Container { content, attrs } => {
-                let content: Element<'a, M> = (*content).try_into()?;
+                let content: Element<'a, M> = (&**content).try_into()?;
 
                 let mut container = Container::new(content);
 
                 for attr in attrs {
+                    let value = &attr.value;
                     container = match attr.name.as_str() {
                         "padding" => {
-                            let padding: Result<iced::Padding, Error> = attr.value.try_into();
+                            let padding: Result<iced::Padding, Error> = value.try_into();
                             container.padding(padding?)
                         }
 
                         "width" => {
-                            let width: Result<iced::Length, Error> = attr.value.try_into();
+                            let width: Result<iced::Length, Error> = value.try_into();
                             container.width(width?)
                         }
 
                         "height" => {
-                            let height: Result<iced::Length, Error> = attr.value.try_into();
+                            let height: Result<iced::Length, Error> = value.try_into();
                             container.height(height?)
                         }
 
                         "max-width" => {
-                            let width: Result<iced::Pixels, Error> = attr.value.try_into();
+                            let width: Result<iced::Pixels, Error> = value.try_into();
                             container.max_width(width?)
                         }
 
                         "max-height" => {
-                            let height: Result<iced::Pixels, Error> = attr.value.try_into();
+                            let height: Result<iced::Pixels, Error> = value.try_into();
                             container.max_height(height?)
                         }
 
                         "align-x" => {
                             let align: Result<iced::alignment::Horizontal, Error> =
-                                attr.value.try_into();
+                                value.try_into();
                             container.align_x(align?)
                         }
 
                         "align-y" => {
-                            let align: Result<iced::alignment::Vertical, Error> =
-                                attr.value.try_into();
+                            let align: Result<iced::alignment::Vertical, Error> = value.try_into();
                             container.align_y(align?)
                         }
 
                         _ => {
                             return Err(Error::Conversion(ConversionError::UnsupportedAttribute(
-                                attr.name,
+                                attr.name.clone(),
                             )))
                         }
                     };
@@ -186,22 +222,22 @@ where
                         "spacing" => todo!(),
                         "padding" => todo!(),
                         "width" => {
-                            let width: Result<iced::Length, Error> = attr.value.try_into();
+                            let width: Result<iced::Length, Error> = (&attr.value).try_into();
                             row.width(width?)
                         }
                         "height" => {
-                            let height: Result<iced::Length, Error> = attr.value.try_into();
+                            let height: Result<iced::Length, Error> = (&attr.value).try_into();
                             row.height(height?)
                         }
                         "align" => {
                             let align: Result<iced::alignment::Vertical, Error> =
-                                attr.value.try_into();
+                                (&attr.value).try_into();
                             row.align_y(align?)
                         }
                         "clip" => todo!(),
                         _ => {
                             return Err(Error::Conversion(ConversionError::UnsupportedAttribute(
-                                attr.name,
+                                attr.name.clone(),
                             )))
                         }
                     };
@@ -220,21 +256,21 @@ where
                         "spacing" => todo!(),
                         "padding" => todo!(),
                         "width" => {
-                            let width: Result<iced::Length, Error> = attr.value.try_into();
+                            let width: Result<iced::Length, Error> = (&attr.value).try_into();
                             col.width(width?)
                         }
                         "height" => {
-                            let height: Result<iced::Length, Error> = attr.value.try_into();
+                            let height: Result<iced::Length, Error> = (&attr.value).try_into();
                             col.height(height?)
                         }
                         "align" => {
                             let align: Result<iced::alignment::Horizontal, Error> =
-                                attr.value.try_into();
+                                (&attr.value).try_into();
                             col.align_x(align?)
                         }
                         _ => {
                             return Err(Error::Conversion(ConversionError::UnsupportedAttribute(
-                                attr.name,
+                                attr.name.clone(),
                             )))
                         }
                     }
@@ -251,16 +287,16 @@ where
                 for attr in attrs {
                     stack = match attr.name.as_str() {
                         "width" => {
-                            let width: Result<iced::Length, Error> = attr.value.try_into();
+                            let width: Result<iced::Length, Error> = (&attr.value).try_into();
                             stack.width(width?)
                         }
                         "height" => {
-                            let height: Result<iced::Length, Error> = attr.value.try_into();
+                            let height: Result<iced::Length, Error> = (&attr.value).try_into();
                             stack.height(height?)
                         }
                         _ => {
                             return Err(Error::Conversion(ConversionError::UnsupportedAttribute(
-                                attr.name,
+                                attr.name.clone(),
                             )))
                         }
                     }
@@ -272,10 +308,15 @@ where
             MarkupType::Value(value) => {
                 // Convert Values to iced Elements
                 match value {
-                    Value::String(str) => Ok(Text::new(str).into()),
+                    Value::String(str) => Ok(Text::new(str.clone()).into()),
                     Value::Number(num) => Ok(Text::new(num).into()),
                     Value::Boolean(val) => Ok(Text::new(val).into()),
                     Value::Null => Ok(Text::new("null").into()),
+                    Value::DataSource {
+                        name,
+                        value,
+                        provider: _,
+                    } => Ok(Text::new(format!("Data source [{name}:{value}]")).into()),
                 }
             }
         }

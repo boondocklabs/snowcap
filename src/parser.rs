@@ -3,6 +3,7 @@ use pest::Parser;
 use pest_derive::Parser;
 use tracing::debug;
 
+use crate::data::{DataProviders, QrDataWrapper};
 use crate::error::ParseError;
 use crate::Snowcap;
 
@@ -28,19 +29,56 @@ impl SnowcapParser {
                     inner
                         .next()
                         .expect("Expected attributed value following label"),
-                );
+                )
+                .unwrap();
                 Attribute { name, value }
             })
             .collect()
     }
 
-    fn parse_value(pair: Pair<Rule>) -> Value {
+    fn parse_value(pair: Pair<Rule>) -> Result<Value, ParseError> {
         match pair.as_rule() {
-            Rule::null => Value::Null,
-            Rule::number => Value::Number(pair.as_str().parse().unwrap()),
-            Rule::string => Value::String(pair.into_inner().as_str().into()),
-            Rule::boolean => Value::Boolean(pair.as_str().parse().unwrap()),
-            _ => panic!("Unhandled AttributeValue pair {pair:?}"),
+            Rule::null => Ok(Value::Null),
+            Rule::number => Ok(Value::Number(pair.as_str().parse().unwrap())),
+            Rule::string => Ok(Value::String(pair.into_inner().as_str().into())),
+            Rule::boolean => Ok(Value::Boolean(pair.as_str().parse().unwrap())),
+            Rule::data_source => {
+                let mut inner = pair.into_inner();
+                let name = inner.next().unwrap().as_str().to_string();
+                let value = inner
+                    .next()
+                    .expect("Expected data source value")
+                    .as_str()
+                    .to_string();
+
+                /*
+                let provider: Option<Arc<Box<dyn DataProvider>>> = match name.as_str() {
+                    "qr" => {
+                        let qr_data = iced::widget::qr_code::Data::new(&value).unwrap();
+                        Some(Arc::new(Box::new(QrDataWrapper(qr_data))))
+                    }
+                    _ => None,
+                };
+                */
+
+                let provider = match name.as_str() {
+                    "qr" => {
+                        let qr_data = iced::widget::qr_code::Data::new(&value).unwrap();
+                        DataProviders::QrCode(QrDataWrapper::new(qr_data))
+                    }
+                    _ => DataProviders::None,
+                };
+
+                Ok(Value::DataSource {
+                    name,
+                    value,
+                    provider,
+                })
+            }
+            _ => Err(ParseError::Unhandled(format!(
+                "AttributeValue {:?}",
+                pair.as_rule()
+            ))),
         }
     }
 
@@ -141,7 +179,7 @@ impl SnowcapParser {
 
                         Rule::element_value => {
                             let val = Self::parse_value(pair.into_inner().next().unwrap());
-                            value = MarkupType::Value(val);
+                            value = MarkupType::Value(val.unwrap());
                         }
                         Rule::element => {
                             value = Self::parse_pair(pair);
@@ -163,14 +201,14 @@ impl SnowcapParser {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct Attributes(Vec<Attribute>);
 
 impl Attributes {
-    pub fn get(&self, name: &str) -> Option<Attribute> {
+    pub fn get(&self, name: &str) -> Option<&Attribute> {
         for attr in &self.0 {
             if attr.name.as_str() == name {
-                return Some(attr.clone());
+                return Some(attr);
             }
         }
         None
@@ -187,6 +225,17 @@ impl IntoIterator for Attributes {
     }
 }
 
+impl<'a> IntoIterator for &'a Attributes {
+    type Item = &'a Attribute;
+
+    type IntoIter = core::slice::Iter<'a, Attribute>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let v = &self.0;
+        v.iter()
+    }
+}
+
 impl FromIterator<Attribute> for Attributes {
     fn from_iter<T: IntoIterator<Item = Attribute>>(iter: T) -> Self {
         let mut c = Vec::new();
@@ -199,21 +248,41 @@ impl FromIterator<Attribute> for Attributes {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Attribute {
     pub name: String,
     pub value: Value,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Value {
     String(String),
     Number(f64),
     Boolean(bool),
     Null,
+    DataSource {
+        name: String,
+        value: String,
+        //provider: Box<dyn DataProvider + 'static>,
+        provider: DataProviders,
+    },
 }
 
-#[derive(Debug, Clone)]
+/*
+impl Clone for Box<dyn DataProvider> {
+    fn clone(&self) -> Self {
+        todo!()
+    }
+}
+
+impl std::fmt::Debug for dyn DataProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "dyn DataProvider")
+    }
+}
+*/
+
+#[derive(Debug)]
 pub enum MarkupType {
     None,
     Container {
