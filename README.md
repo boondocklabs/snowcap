@@ -18,6 +18,7 @@ The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example lay
 | Stack   | `^<attr:val,...>[ element, ...]`
 | Text          | `text<attr:val,...>("Content")`
 | Button        | `button<attr:val,...>(element)`
+| Toggler       | `toggler<attr:val,...>(element)`
 
 For example, creating a container with a column would look like
 
