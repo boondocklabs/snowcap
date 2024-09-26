@@ -16,6 +16,8 @@ The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example lay
 | Row		| `-<attr:val,...>[ element, ...]`
 | Column	| `\|<attr:val,...>[ element, ...]`
 | Stack   | `^<attr:val,...>[ element, ...]`
+| Rule (horiz)  | `rule-horizontal<height:2>()`
+| Rule (vert)   | `rule-vertical<width:2>()`
 | Text          | `text<attr:val,...>("Content")`
 | Button        | `button<attr:val,...>(element)`
 | Toggler       | `toggler<attr:val,...>(element)`
