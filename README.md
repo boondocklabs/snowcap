@@ -7,7 +7,7 @@ To run it, use `cargo run test.iced` from the root of the project.
 
 ## Grammar
 
-The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example layout is in [test.iced](samples/est.iced).
+The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example layout is in [test.iced](samples/test.iced).
 
 
 |Iced Element   | Snowcap Syntax |
