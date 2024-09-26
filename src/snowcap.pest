@@ -1,0 +1,37 @@
+/* Snowcap pest grammar */
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+container = {
+    "{" ~ ("<" ~ attributes ~ ">")? ~ (row | column | element)? ~ "}"
+}
+
+row    = { ("row" | "-") ~ ("<" ~ attributes ~ ">")? ~ "[" ~ (element | row | column | container) ~ ("," ~ (element | row | column | container))* ~ "]" }
+column = { ("col" | "|") ~ ("<" ~ attributes ~ ">")? ~ "[" ~ (element | row | column | container) ~ ("," ~ (element | row | column | container))* ~ "]" }
+
+element    = { label ~ ("<" ~ attributes ~ ">")? ~ "(" ~ (element_value | element)? ~ ")" }
+pair       = { label ~ ":" ~ value }
+attributes = { pair ~ ("," ~ pair)* }
+
+element_value =  { value }
+value         = _{ string | number | boolean | null }
+
+boolean = { "true" | "false" }
+
+null = { "null" }
+
+label = @{ (ASCII_ALPHA | "-")* }
+
+string = ${ "\"" ~ inner ~ "\"" }
+inner  = @{ char* }
+char   =  {
+    !("\"" | "\\") ~ ANY
+  | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+  | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+number = @{
+    "-"? ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)? ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)?
+}
+
+markup = _{ SOI ~ (container) ~ EOI }
