@@ -53,7 +53,7 @@ impl SnowcapParser {
 
         for pair in inner {
             match pair.as_rule() {
-                Rule::row | Rule::column | Rule::element => {
+                Rule::row | Rule::column | Rule::element | Rule::stack => {
                     content = Self::parse_pair(pair);
                 }
                 Rule::attributes => {
@@ -102,6 +102,22 @@ impl SnowcapParser {
         Ok(MarkupType::Column { attrs, contents })
     }
 
+    fn parse_stack(pair: Pair<Rule>) -> Result<MarkupType, ParseError> {
+        let mut contents = Vec::new();
+        let mut attrs = Attributes::default();
+
+        for pair in pair.into_inner() {
+            if let Rule::attributes = pair.as_rule() {
+                attrs = Self::parse_attributes(pair.into_inner());
+                continue;
+            }
+
+            contents.push(SnowcapParser::parse_pair(pair))
+        }
+
+        Ok(MarkupType::Stack { attrs, contents })
+    }
+
     fn parse_pair(pair: Pair<Rule>) -> MarkupType {
         match pair.as_rule() {
             Rule::EOI => todo!(),
@@ -109,6 +125,7 @@ impl SnowcapParser {
             Rule::container => Self::parse_container(pair).unwrap(),
             Rule::row => Self::parse_row(pair).unwrap(),
             Rule::column => Self::parse_column(pair).unwrap(),
+            Rule::stack => Self::parse_stack(pair).unwrap(),
             Rule::element => {
                 debug!("Element {pair:?}");
                 let mut inner = pair.into_inner();
@@ -214,6 +231,10 @@ pub enum MarkupType {
         contents: Vec<MarkupType>,
     },
     Column {
+        attrs: Attributes,
+        contents: Vec<MarkupType>,
+    },
+    Stack {
         attrs: Attributes,
         contents: Vec<MarkupType>,
     },

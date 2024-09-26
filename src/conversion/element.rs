@@ -1,5 +1,5 @@
 use iced::{
-    widget::{Button, Column, Container, Row, Rule, Space, Text},
+    widget::{Button, Column, Container, Row, Rule, Space, Stack, Text},
     Element, Length, Pixels,
 };
 use tracing::debug;
@@ -217,6 +217,32 @@ where
                 }
 
                 Ok(col.into())
+            }
+            MarkupType::Stack { attrs, contents } => {
+                let children: Result<Vec<Element<'a, M>>, Error> =
+                    contents.into_iter().map(|item| item.try_into()).collect(); // Convert each item into Element
+
+                let mut stack = Stack::with_children(children?);
+
+                for attr in attrs {
+                    stack = match attr.name.as_str() {
+                        "width" => {
+                            let width: Result<iced::Length, Error> = attr.value.try_into();
+                            stack.width(width?)
+                        }
+                        "height" => {
+                            let height: Result<iced::Length, Error> = attr.value.try_into();
+                            stack.height(height?)
+                        }
+                        _ => {
+                            return Err(Error::Conversion(ConversionError::UnsupportedAttribute(
+                                attr.name,
+                            )))
+                        }
+                    }
+                }
+
+                Ok(stack.into())
             }
             MarkupType::Label(_) => todo!(),
             MarkupType::Value(value) => {

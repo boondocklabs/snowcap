@@ -7,7 +7,7 @@ To run it, use `cargo run test.iced` from the root of the project.
 
 ## Grammar
 
-The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example layout is in [test.iced](test.iced).
+The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example layout is in [test.iced](samples/est.iced).
 
 
 |Iced Element   | Snowcap Syntax |
@@ -15,6 +15,7 @@ The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example lay
 | Container     | `{<attr:val,...> ...}`|
 | Row		| `-<attr:val,...>[ element, ...]`
 | Column	| `\|<attr:val,...>[ element, ...]`
+| Stack   | `^<attr:val,...>[ element, ...]`
 | Text          | `text<attr:val,...>("Content")`
 | Button        | `button<attr:val,...>(element)`
 
