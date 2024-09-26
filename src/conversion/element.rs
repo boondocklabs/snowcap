@@ -1,5 +1,5 @@
 use iced::{
-    widget::{Button, Column, Container, Row, Rule, Space, Stack, Text},
+    widget::{Button, Column, Container, Row, Rule, Space, Stack, Text, Toggler},
     Element, Length, Pixels,
 };
 use tracing::debug;
@@ -21,7 +21,7 @@ where
             MarkupType::None => Ok(Space::new(0, 0).into()),
             MarkupType::Element {
                 name,
-                attrs: attr,
+                attrs,
                 content,
             } => match name.as_str() {
                 "text" => {
@@ -31,7 +31,7 @@ where
                         Text::new("Bad value")
                     };
 
-                    for attr in attr {
+                    for attr in attrs {
                         match attr.name.as_str() {
                             "size" => {
                                 let pixels: iced::Pixels = attr.try_into()?;
@@ -45,7 +45,7 @@ where
                 }
 
                 "space" => {
-                    let width: Length = attr
+                    let width: Length = attrs
                         .get("width")
                         .unwrap_or(Attribute {
                             name: "width".to_string(),
@@ -53,7 +53,7 @@ where
                         })
                         .try_into()?;
 
-                    let height: Length = attr
+                    let height: Length = attrs
                         .get("height")
                         .unwrap_or(Attribute {
                             name: "height".to_string(),
@@ -75,7 +75,7 @@ where
                 }
 
                 "rule-horizontal" => {
-                    let height: Pixels = attr
+                    let height: Pixels = attrs
                         .get("height")
                         .ok_or_else(|| Error::MissingAttribute("height".to_string()))?
                         .try_into()?;
@@ -84,11 +84,35 @@ where
                 }
 
                 "rule-vertical" => {
-                    let width: Pixels = attr
+                    let width: Pixels = attrs
                         .get("width")
                         .ok_or_else(|| Error::MissingAttribute("height".to_string()))?
                         .try_into()?;
                     Ok(Rule::vertical(width).into())
+                }
+
+                "toggler" => {
+                    let is_toggled: bool = attrs
+                        .get("toggled")
+                        .unwrap_or(Attribute {
+                            name: "toggled".into(),
+                            value: Value::Boolean(false),
+                        })
+                        .try_into()?;
+
+                    let mut toggler = Toggler::new(is_toggled);
+
+                    for attr in attrs {
+                        toggler = match attr.name.as_str() {
+                            "size" => {
+                                let pixels: iced::Pixels = attr.try_into()?;
+                                toggler.size(pixels)
+                            }
+                            _ => toggler,
+                        };
+                    }
+
+                    Ok(toggler.into())
                 }
 
                 _ => {

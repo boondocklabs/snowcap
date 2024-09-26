@@ -20,6 +20,20 @@ impl TryInto<f32> for Value {
     }
 }
 
+impl TryInto<bool> for Value {
+    type Error = Error;
+
+    fn try_into(self) -> Result<bool, Self::Error> {
+        if let Value::Boolean(val) = self {
+            Ok(val)
+        } else {
+            Err(Error::Conversion(ConversionError::InvalidType(format!(
+                "Cannot convert {self:?} to bool"
+            ))))
+        }
+    }
+}
+
 impl TryInto<iced::Length> for Value {
     type Error = Error;
 
@@ -37,15 +51,6 @@ impl TryInto<iced::Length> for Value {
                 "Unsupported {self:?}"
             )))),
         }
-        /*
-        if let Value::Number(num) = self {
-            Ok((num as f32).into())
-        } else {
-            Err(Error::Conversion(ConversionError::InvalidType(format!(
-                "Cannot convert {self:?} to iced::Length"
-            ))))
-        }
-        */
     }
 }
 
@@ -79,6 +84,13 @@ impl TryInto<iced::Pixels> for Attribute {
     type Error = Error;
 
     fn try_into(self) -> Result<iced::Pixels, Self::Error> {
+        self.value.try_into()
+    }
+}
+
+impl TryInto<bool> for Attribute {
+    type Error = Error;
+    fn try_into(self) -> Result<bool, Self::Error> {
         self.value.try_into()
     }
 }

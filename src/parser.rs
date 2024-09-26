@@ -39,6 +39,7 @@ impl SnowcapParser {
             Rule::null => Value::Null,
             Rule::number => Value::Number(pair.as_str().parse().unwrap()),
             Rule::string => Value::String(pair.into_inner().as_str().into()),
+            Rule::boolean => Value::Boolean(pair.as_str().parse().unwrap()),
             _ => panic!("Unhandled AttributeValue pair {pair:?}"),
         }
     }
@@ -120,8 +121,6 @@ impl SnowcapParser {
 
     fn parse_pair(pair: Pair<Rule>) -> MarkupType {
         match pair.as_rule() {
-            Rule::EOI => todo!(),
-            Rule::WHITESPACE => todo!(),
             Rule::container => Self::parse_container(pair).unwrap(),
             Rule::row => Self::parse_row(pair).unwrap(),
             Rule::column => Self::parse_column(pair).unwrap(),

@@ -25,7 +25,8 @@
             {<width:"fill", height:"fill", align-x:"center", align-y:"center">
                 |<align:"center">[
                     text<size:50>("Center"),
-                    button(text<size:20>("Text in a Button"))
+                    button(text<size:20>("Text in a Button")),
+                    toggler<toggled:true, size:30>()
                 ]
             },
 
