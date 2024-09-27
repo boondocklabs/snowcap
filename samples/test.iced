@@ -22,9 +22,9 @@
 
             rule-vertical<width:2>(),
 
-            {<width:"fill", height:"fill", align-x:"center", align-y:"center">
+            {<width:"fill", height:"fill", align-x:"center", align-y:"top">
                 |<align:"center">[
-                    text<size:50>("Center"),
+                    markdown(file!("README.md")),
                     qr-code<cell-size:10>(qr!("https://iced.rs")),
                     button(text<size:20>("Text in a Button")),
                     toggler<toggled:true, size:30>()

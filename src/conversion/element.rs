@@ -8,7 +8,9 @@ use iced::{
 use tracing::debug;
 
 use crate::{
+    data::{DataProvider, DataType},
     error::{ConversionError, Error},
+    message::Message,
     parser::Value,
     MarkupType,
 };
@@ -22,10 +24,13 @@ impl<'a> IntoFragment<'a> for &MarkupType {
                 Value::Boolean(b) => format!("{b}").into(),
                 Value::Null => format!("null").into(),
                 Value::DataSource {
-                    name,
-                    value,
-                    provider: _,
-                } => format!("DATA {name}:{value}").into(),
+                    name: _,
+                    value: _,
+                    provider,
+                } => match provider {
+                    //DataProvider::File(file_provider) => file_provider.data().clone().into(),
+                    _ => "Unsupported DataProvider".into(),
+                },
             },
             _ => "Expecting MarkupType::Value".into(),
         }
@@ -34,7 +39,7 @@ impl<'a> IntoFragment<'a> for &MarkupType {
 
 impl<'a, M> TryInto<Element<'a, M>> for &'a MarkupType
 where
-    M: 'a + Clone,
+    M: 'a + Clone + From<Message>,
 {
     type Error = Error;
 
@@ -134,7 +139,7 @@ where
                         provider,
                     }) = &**content
                     {
-                        let mut qr: QRCode = QRCode::new(provider.try_into().unwrap());
+                        let mut qr: QRCode = QRCode::new(provider.try_into()?);
 
                         for attr in attrs {
                             qr = match attr.name.as_str() {
@@ -149,6 +154,35 @@ where
                         Ok(qr.into())
                     } else {
                         Err(Error::Conversion(ConversionError::Missing("data".into())))
+                    }
+                }
+                "markdown" => {
+                    if let MarkupType::Value(Value::DataSource {
+                        name: _,
+                        value: _,
+                        provider,
+                    }) = &**content
+                    {
+                        if let DataProvider::File(file) = provider {
+                            //file.load_markdown().unwrap();
+                            if let DataType::Markdown(data) = file.data() {
+                                let element = iced::widget::markdown::view(
+                                    data,
+                                    iced::widget::markdown::Settings::default(),
+                                    iced::widget::markdown::Style::from_palette(
+                                        iced::Theme::TokyoNightStorm.palette(),
+                                    ),
+                                );
+
+                                Ok(element.map(|_url| M::from(Message::Markdown)).into())
+                            } else {
+                                panic!("Expecting DataType::Markdown")
+                            }
+                        } else {
+                            panic!("Expect DataProvider::File");
+                        }
+                    } else {
+                        panic!("Expect MarkupType::Value")
                     }
                 }
                 _ => {
@@ -166,39 +200,38 @@ where
                     let value = &attr.value;
                     container = match attr.name.as_str() {
                         "padding" => {
-                            let padding: Result<iced::Padding, Error> = value.try_into();
-                            container.padding(padding?)
+                            let padding: iced::Padding = value.try_into()?;
+                            container.padding(padding)
                         }
 
                         "width" => {
-                            let width: Result<iced::Length, Error> = value.try_into();
-                            container.width(width?)
+                            let width: iced::Length = value.try_into()?;
+                            container.width(width)
                         }
 
                         "height" => {
-                            let height: Result<iced::Length, Error> = value.try_into();
-                            container.height(height?)
+                            let height: iced::Length = value.try_into()?;
+                            container.height(height)
                         }
 
                         "max-width" => {
-                            let width: Result<iced::Pixels, Error> = value.try_into();
-                            container.max_width(width?)
+                            let width: iced::Pixels = value.try_into()?;
+                            container.max_width(width)
                         }
 
                         "max-height" => {
-                            let height: Result<iced::Pixels, Error> = value.try_into();
-                            container.max_height(height?)
+                            let height: iced::Pixels = value.try_into()?;
+                            container.max_height(height)
                         }
 
                         "align-x" => {
-                            let align: Result<iced::alignment::Horizontal, Error> =
-                                value.try_into();
-                            container.align_x(align?)
+                            let align: iced::alignment::Horizontal = value.try_into()?;
+                            container.align_x(align)
                         }
 
                         "align-y" => {
-                            let align: Result<iced::alignment::Vertical, Error> = value.try_into();
-                            container.align_y(align?)
+                            let align: iced::alignment::Vertical = value.try_into()?;
+                            container.align_y(align)
                         }
 
                         _ => {

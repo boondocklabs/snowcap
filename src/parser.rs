@@ -3,7 +3,7 @@ use pest::Parser;
 use pest_derive::Parser;
 use tracing::debug;
 
-use crate::data::{DataProviders, QrDataWrapper};
+use crate::data::{DataProvider, FileProvider, QRDataProvider};
 use crate::error::ParseError;
 use crate::Snowcap;
 
@@ -48,25 +48,25 @@ impl SnowcapParser {
                 let value = inner
                     .next()
                     .expect("Expected data source value")
+                    .into_inner()
                     .as_str()
                     .to_string();
-
-                /*
-                let provider: Option<Arc<Box<dyn DataProvider>>> = match name.as_str() {
-                    "qr" => {
-                        let qr_data = iced::widget::qr_code::Data::new(&value).unwrap();
-                        Some(Arc::new(Box::new(QrDataWrapper(qr_data))))
-                    }
-                    _ => None,
-                };
-                */
 
                 let provider = match name.as_str() {
                     "qr" => {
                         let qr_data = iced::widget::qr_code::Data::new(&value).unwrap();
-                        DataProviders::QrCode(QrDataWrapper::new(qr_data))
+                        DataProvider::QrCode(QRDataProvider::new(qr_data))
                     }
-                    _ => DataProviders::None,
+                    "file" => {
+                        let mut provider = FileProvider::new(&value);
+                        if value.ends_with(".md") {
+                            provider.load_markdown().unwrap();
+                        } else {
+                            provider.load_text().unwrap();
+                        }
+                        DataProvider::File(provider)
+                    }
+                    _ => DataProvider::None,
                 };
 
                 Ok(Value::DataSource {
@@ -264,7 +264,7 @@ pub enum Value {
         name: String,
         value: String,
         //provider: Box<dyn DataProvider + 'static>,
-        provider: DataProviders,
+        provider: DataProvider,
     },
 }
 

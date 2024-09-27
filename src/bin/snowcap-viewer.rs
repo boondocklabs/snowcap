@@ -5,7 +5,7 @@ use iced::{
     Element, Task,
 };
 use notify::{event::ModifyKind, RecommendedWatcher, Watcher};
-use snowcap::{Snowcap, SnowcapParser};
+use snowcap::{Message, Snowcap, SnowcapParser};
 use tracing::{debug, error, info};
 use tracing_subscriber;
 
@@ -76,10 +76,12 @@ impl SnowcapViewer {
     }
 }
 
+/*
 #[derive(Debug, Clone)]
 enum Message {
     Watcher(notify::Event),
 }
+*/
 
 impl SnowcapViewer {
     fn update(&mut self, message: Message) {
@@ -93,6 +95,10 @@ impl SnowcapViewer {
                     }
                     _ => {}
                 }
+            }
+
+            _ => {
+                info!("Unhandled message {message:?}")
             }
         }
     }

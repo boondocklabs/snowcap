@@ -34,4 +34,7 @@ pub enum Error {
 
     #[error(transparent)]
     Pest(#[from] pest::error::Error<Rule>),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
