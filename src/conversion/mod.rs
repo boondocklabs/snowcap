@@ -163,7 +163,7 @@ impl TryInto<iced::Length> for &Attribute {
     type Error = Error;
 
     fn try_into(self) -> Result<iced::Length, Self::Error> {
-        (&self.value).try_into()
+        (&*self.value()).try_into()
     }
 }
 
@@ -171,7 +171,7 @@ impl TryInto<iced::Pixels> for &Attribute {
     type Error = Error;
 
     fn try_into(self) -> Result<iced::Pixels, Self::Error> {
-        (&self.value).try_into()
+        (&*self.value()).try_into()
     }
 }
 
@@ -179,7 +179,7 @@ impl TryInto<bool> for &Attribute {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<bool, Self::Error> {
-        (&self.value).try_into()
+        (&*self.value()).try_into()
     }
 }
 
@@ -187,6 +187,16 @@ impl TryInto<u16> for &Attribute {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<u16, Self::Error> {
-        (&self.value).try_into()
+        (&*self.value()).try_into()
     }
 }
+
+/*
+impl<'a> TryInto<&'a String> for &'a Attribute {
+    type Error = ConversionError;
+
+    fn try_into(self) -> Result<&'a String, Self::Error> {
+        (&*self.value()).try_into()
+    }
+}
+*/

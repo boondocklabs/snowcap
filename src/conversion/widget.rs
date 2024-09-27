@@ -1,7 +1,7 @@
-use iced::widget::{Button, Image, QRCode, Rule, Space, Toggler};
+use iced::widget::{Button, Image, QRCode, Rule, Space, Themer, Toggler};
 use iced::{widget::Text, Element};
-use iced::{Length, Pixels};
-use tracing::debug;
+use iced::{Length, Pixels, Theme};
+use tracing::{debug, info};
 
 use crate::data::{DataProvider, DataType};
 use crate::error::ConversionError;
@@ -15,18 +15,19 @@ pub struct SnowcapWidget;
 impl SnowcapWidget {
     pub fn convert<'a, SnowcapMessage, AppMessage>(
         name: &String,
-        attrs: &Attributes,
+        attrs: &'a Attributes,
         content: &'a MarkupTree<AppMessage>,
     ) -> Result<Element<'a, SnowcapMessage>, Error>
     where
         SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
+        AppMessage: std::fmt::Debug,
     {
         match name.as_str() {
             "text" => {
                 let mut text = Text::new(content);
 
                 for attr in attrs {
-                    match attr.name.as_str() {
+                    match attr.name().as_str() {
                         "size" => {
                             let pixels: iced::Pixels = attr.try_into()?;
                             text = text.size(pixels);
@@ -89,11 +90,13 @@ impl SnowcapWidget {
                     false
                 };
 
-                let mut toggler = Toggler::new(is_toggled)
-                    .on_toggle(|toggled| SnowcapMessage::from(Message::Toggler(toggled)));
+                let mut toggler = Toggler::new(is_toggled).on_toggle(|toggled| {
+                    attrs.set("toggled", Value::Boolean(toggled));
+                    SnowcapMessage::from(Message::Toggler(toggled))
+                });
 
                 for attr in attrs {
-                    toggler = match attr.name.as_str() {
+                    toggler = match attr.name().as_str() {
                         "size" => {
                             let pixels: iced::Pixels = attr.try_into()?;
                             toggler.size(pixels)
@@ -116,7 +119,7 @@ impl SnowcapWidget {
                     let mut qr: QRCode = QRCode::new(provider.try_into()?);
 
                     for attr in attrs {
-                        qr = match attr.name.as_str() {
+                        qr = match attr.name().as_str() {
                             "cell-size" => {
                                 let cell_size: u16 = attr.try_into()?;
                                 qr.cell_size(cell_size)
@@ -181,6 +184,25 @@ impl SnowcapWidget {
                 } else {
                     panic!("Expect MarkupType::Value::DataSource")
                 }
+            }
+            "themer" => {
+                let theme: Theme = attrs
+                    .get("theme")
+                    .ok_or_else(|| Error::MissingAttribute("theme".to_string()))?
+                    .try_into()?;
+
+                debug!("Themer content {:#?}", content);
+
+                let content: Element<'a, SnowcapMessage> = content.try_into()?;
+
+                Ok(Themer::new(
+                    move |_old_theme| {
+                        info!("Setting theme to {:?}", theme);
+                        theme.clone()
+                    },
+                    content,
+                )
+                .into())
             }
             _ => {
                 return Err(Error::Conversion(ConversionError::UnsupportedAttribute(

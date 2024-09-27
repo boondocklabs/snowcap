@@ -1,11 +1,11 @@
 {
     |[
-        {<align-x:"center", align-y:"center", padding:0, height:100, width:"fill">
+        themer<theme:"dracula">({<align-x:"center", align-y:"center", padding:0, height:100, width:"fill">
             row<align:"center", spacing:30>[
                 image(file!("samples/ferris.png")),
-                text<size:40>("Snowcap Viewer")
+                themer<theme:"SolarizedLight">(text<size:40>("Snowcap Viewer"))
             ]
-        },
+        }),
 
         rule-horizontal<height:1>(),
 

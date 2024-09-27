@@ -27,7 +27,7 @@ impl TryInto<iced::alignment::Vertical> for &Attribute {
     type Error = Error;
 
     fn try_into(self) -> Result<iced::alignment::Vertical, Self::Error> {
-        (&self.value).try_into()
+        (&*self.value()).try_into()
     }
 }
 
@@ -55,6 +55,6 @@ impl TryInto<iced::alignment::Horizontal> for &Attribute {
     type Error = Error;
 
     fn try_into(self) -> Result<iced::alignment::Horizontal, Self::Error> {
-        (&self.value).try_into()
+        (&*self.value()).try_into()
     }
 }

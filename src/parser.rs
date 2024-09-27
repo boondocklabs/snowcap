@@ -1,9 +1,10 @@
+use std::cell::{Ref, RefCell};
 use std::marker::PhantomData;
 
 use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 use pest_derive::Parser;
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::data::{DataProvider, FileProvider, QRDataProvider};
 use crate::error::ParseError;
@@ -25,8 +26,6 @@ impl<AppMessage> SnowcapParser<AppMessage> {
     }
 
     fn parse_attributes(pairs: Pairs<Rule>) -> Attributes {
-        debug!("[Parsing Attributes]");
-
         pairs
             .map(|pair| {
                 let mut inner = pair.into_inner();
@@ -37,7 +36,7 @@ impl<AppMessage> SnowcapParser<AppMessage> {
                         .expect("Expected attributed value following label"),
                 )
                 .unwrap();
-                Attribute { name, value }
+                Attribute::new(name, value)
             })
             .collect()
     }
@@ -184,7 +183,6 @@ impl<AppMessage> SnowcapParser<AppMessage> {
                         Rule::attributes => {
                             attr = Self::parse_attributes(pair.into_inner());
                         }
-
                         Rule::element_value => {
                             let val = Self::parse_value(pair.into_inner().next().unwrap());
                             value = MarkupTree::Value(val.unwrap());
@@ -192,7 +190,12 @@ impl<AppMessage> SnowcapParser<AppMessage> {
                         Rule::element => {
                             value = Self::parse_pair(pair);
                         }
-                        _ => {}
+                        Rule::container => {
+                            value = Self::parse_container(pair).unwrap();
+                        }
+                        _ => {
+                            error!("Unhandled element rule {:?}", pair.as_rule())
+                        }
                     }
                 }
 
@@ -220,6 +223,26 @@ impl Attributes {
             }
         }
         None
+    }
+
+    /*
+    pub fn get_mut(&self, name: &str) -> Option<&mut Attribute> {
+        for attr in &mut self.0 {
+            if attr.name.as_str() == name {
+                return Some(attr);
+            }
+        }
+        None
+    }
+    */
+
+    pub fn set(&self, name: &str, value: Value) {
+        for attr in &self.0 {
+            if attr.name.as_str() == name {
+                *attr.value.borrow_mut() = value;
+                break;
+            }
+        }
     }
 }
 
@@ -258,8 +281,24 @@ impl FromIterator<Attribute> for Attributes {
 
 #[derive(Debug)]
 pub struct Attribute {
-    pub name: String,
-    pub value: Value,
+    name: String,
+    value: RefCell<Value>,
+}
+
+impl Attribute {
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+    pub fn value<'a>(&'a self) -> Ref<'a, Value> {
+        self.value.borrow()
+    }
+
+    pub fn new(name: String, value: Value) -> Self {
+        Self {
+            name,
+            value: RefCell::new(value),
+        }
+    }
 }
 
 #[derive(Debug)]

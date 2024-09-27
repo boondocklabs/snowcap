@@ -12,7 +12,7 @@ stack  = { ("stack" | "^") ~ ("<" ~ attributes ~ ">")? ~ element_list }
 
 element_list = _{ "[" ~ (element | row | column | stack | container) ~ ("," ~ (element | row | column | stack | container))* ~ "]" }
 
-element    = { label ~ ("<" ~ attributes ~ ">")? ~ "(" ~ (element_value | element)? ~ ")" }
+element    = { label ~ ("<" ~ attributes ~ ">")? ~ "(" ~ (element_value | element | container | row | column | stack)? ~ ")" }
 pair       = { label ~ ":" ~ value }
 attributes = { pair ~ ("," ~ pair)* }
 

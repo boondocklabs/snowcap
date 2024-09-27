@@ -90,6 +90,6 @@ impl<'a, AppMessage> IntoFragment<'a> for &MarkupTree<AppMessage> {
 /// ```
 impl<'a> IntoFragment<'a> for &Attribute {
     fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
-        (&self.value).into()
+        (&*self.value()).into()
     }
 }

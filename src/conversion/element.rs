@@ -18,11 +18,12 @@ impl<'a, SnowcapMessage, AppMessage> TryInto<Element<'a, SnowcapMessage>>
     for &'a MarkupTree<AppMessage>
 where
     SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
+    AppMessage: std::fmt::Debug,
 {
     type Error = Error;
 
-    fn try_into(self) -> Result<Element<'a, SnowcapMessage>, Error> {
-        match &self {
+    fn try_into(mut self) -> Result<Element<'a, SnowcapMessage>, Error> {
+        match &mut self {
             MarkupTree::None => Ok(Space::new(0, 0).into()),
 
             MarkupTree::Element {

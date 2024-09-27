@@ -2,7 +2,7 @@ use std::fs;
 
 use iced::{
     futures::{self, channel::mpsc::channel, SinkExt},
-    Element, Task,
+    Element, Task, Theme,
 };
 use notify::{event::ModifyKind, RecommendedWatcher, Watcher};
 use snowcap::{Snowcap, SnowcapParser};
@@ -31,15 +31,17 @@ pub fn main() -> iced::Result {
         .watch(filename.as_ref(), notify::RecursiveMode::Recursive)
         .unwrap();
 
-    iced::application("Snowcap", SnowcapViewer::update, SnowcapViewer::view).run_with(move || {
-        let viewer = SnowcapViewer::new(filename.clone());
-        (
-            viewer,
-            Task::run(rx, |event| {
-                snowcap::Message::App(Message::Watcher(event.unwrap()))
-            }),
-        )
-    })
+    iced::application("Snowcap", SnowcapViewer::update, SnowcapViewer::view)
+        .theme(SnowcapViewer::theme)
+        .run_with(move || {
+            let viewer = SnowcapViewer::new(filename.clone());
+            (
+                viewer,
+                Task::run(rx, |event| {
+                    snowcap::Message::App(Message::Watcher(event.unwrap()))
+                }),
+            )
+        })
 }
 
 struct SnowcapViewer {
@@ -128,5 +130,9 @@ impl SnowcapViewer {
         } else {
             iced::widget::text("No snowcap file loaded").into()
         }
+    }
+
+    fn theme(&self) -> Theme {
+        Theme::TokyoNight
     }
 }

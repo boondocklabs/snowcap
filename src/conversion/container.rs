@@ -11,14 +11,15 @@ impl SnowcapContainer {
     ) -> Result<Element<'a, SnowcapMessage>, Error>
     where
         SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
+        AppMessage: std::fmt::Debug,
     {
         let content: Element<'a, SnowcapMessage> = content.try_into()?;
 
         let mut container = Container::new(content);
 
         for attr in attrs {
-            let value = &attr.value;
-            container = match attr.name.as_str() {
+            let value = &*attr.value();
+            container = match attr.name().as_str() {
                 "padding" => {
                     let padding: iced::Padding = value.try_into()?;
                     container.padding(padding)
@@ -56,7 +57,7 @@ impl SnowcapContainer {
 
                 _ => {
                     return Err(Error::Conversion(ConversionError::UnsupportedAttribute(
-                        attr.name.clone(),
+                        attr.name().clone(),
                     )))
                 }
             };
