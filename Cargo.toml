@@ -1,6 +1,6 @@
 [package]
 name = "snowcap"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license-file = "LICENSE.txt"
 description = "A simple markup language for iced"
