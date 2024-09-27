@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 use pest_derive::Parser;
@@ -9,11 +11,15 @@ use crate::Snowcap;
 
 #[derive(Parser)]
 #[grammar = "snowcap.pest"]
-pub struct SnowcapParser;
+pub struct SnowcapParser<AppMessage> {
+    _phantom: PhantomData<AppMessage>,
+}
 
-impl SnowcapParser {
-    pub fn parse_file(file: &str) -> Result<Snowcap, crate::Error> {
-        let markup = SnowcapParser::parse(Rule::markup, file)?.next().unwrap();
+impl<AppMessage> SnowcapParser<AppMessage> {
+    pub fn parse_file(file: &str) -> Result<Snowcap<AppMessage>, crate::Error> {
+        let markup = SnowcapParser::<AppMessage>::parse(Rule::markup, file)?
+            .next()
+            .unwrap();
         let root = SnowcapParser::parse_pair(markup);
         Ok(Snowcap { root })
     }
@@ -82,12 +88,12 @@ impl SnowcapParser {
         }
     }
 
-    fn parse_container(pair: Pair<Rule>) -> Result<MarkupType, ParseError> {
+    fn parse_container(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
         debug!("[Parsing Container]");
 
         let inner = pair.into_inner();
 
-        let mut content: MarkupType = MarkupType::None;
+        let mut content: MarkupTree<AppMessage> = MarkupTree::None;
         let mut attr = Attributes::default();
 
         for pair in inner {
@@ -103,13 +109,13 @@ impl SnowcapParser {
             };
         }
 
-        Ok(MarkupType::Container {
+        Ok(MarkupTree::Container {
             content: Box::new(content),
             attrs: attr,
         })
     }
 
-    fn parse_row(pair: Pair<Rule>) -> Result<MarkupType, ParseError> {
+    fn parse_row(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
         let mut contents = Vec::new();
         let mut attrs = Attributes::default();
 
@@ -122,10 +128,10 @@ impl SnowcapParser {
             contents.push(SnowcapParser::parse_pair(pair))
         }
 
-        Ok(MarkupType::Row { attrs, contents })
+        Ok(MarkupTree::Row { attrs, contents })
     }
 
-    fn parse_column(pair: Pair<Rule>) -> Result<MarkupType, ParseError> {
+    fn parse_column(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
         let mut contents = Vec::new();
         let mut attrs = Attributes::default();
 
@@ -138,10 +144,10 @@ impl SnowcapParser {
             contents.push(SnowcapParser::parse_pair(pair))
         }
 
-        Ok(MarkupType::Column { attrs, contents })
+        Ok(MarkupTree::Column { attrs, contents })
     }
 
-    fn parse_stack(pair: Pair<Rule>) -> Result<MarkupType, ParseError> {
+    fn parse_stack(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
         let mut contents = Vec::new();
         let mut attrs = Attributes::default();
 
@@ -154,10 +160,10 @@ impl SnowcapParser {
             contents.push(SnowcapParser::parse_pair(pair))
         }
 
-        Ok(MarkupType::Stack { attrs, contents })
+        Ok(MarkupTree::Stack { attrs, contents })
     }
 
-    fn parse_pair(pair: Pair<Rule>) -> MarkupType {
+    fn parse_pair(pair: Pair<Rule>) -> MarkupTree<AppMessage> {
         match pair.as_rule() {
             Rule::container => Self::parse_container(pair).unwrap(),
             Rule::row => Self::parse_row(pair).unwrap(),
@@ -169,7 +175,7 @@ impl SnowcapParser {
                 let label = inner.next().unwrap().as_str().to_string();
 
                 let mut attr = Attributes::default();
-                let mut value = MarkupType::None;
+                let mut value = MarkupTree::None;
 
                 for pair in inner {
                     match pair.as_rule() {
@@ -179,7 +185,7 @@ impl SnowcapParser {
 
                         Rule::element_value => {
                             let val = Self::parse_value(pair.into_inner().next().unwrap());
-                            value = MarkupType::Value(val.unwrap());
+                            value = MarkupTree::Value(val.unwrap());
                         }
                         Rule::element => {
                             value = Self::parse_pair(pair);
@@ -188,14 +194,14 @@ impl SnowcapParser {
                     }
                 }
 
-                MarkupType::Element {
+                MarkupTree::Element {
                     name: label,
                     attrs: attr,
                     content: Box::new(value),
                 }
             }
             Rule::element_value => SnowcapParser::parse_pair(pair.into_inner().last().unwrap()),
-            Rule::label => MarkupType::Label(pair.into_inner().next().unwrap().as_str().into()),
+            Rule::label => MarkupTree::Label(pair.into_inner().next().unwrap().as_str().into()),
             _ => panic!("Unhandled {pair:?}"),
         }
     }
@@ -268,46 +274,34 @@ pub enum Value {
     },
 }
 
-/*
-impl Clone for Box<dyn DataProvider> {
-    fn clone(&self) -> Self {
-        todo!()
-    }
-}
-
-impl std::fmt::Debug for dyn DataProvider {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "dyn DataProvider")
-    }
-}
-*/
-
+/// Abstract Syntax Tree (AST) representation of the parsed grammar
 #[derive(Debug)]
-pub enum MarkupType {
+pub enum MarkupTree<AppMessage> {
     None,
     Container {
-        content: Box<MarkupType>,
         attrs: Attributes,
+        content: Box<MarkupTree<AppMessage>>,
     },
     Element {
         name: String,
         attrs: Attributes,
-        content: Box<MarkupType>,
+        content: Box<MarkupTree<AppMessage>>,
     },
     Row {
         attrs: Attributes,
-        contents: Vec<MarkupType>,
+        contents: Vec<MarkupTree<AppMessage>>,
     },
     Column {
         attrs: Attributes,
-        contents: Vec<MarkupType>,
+        contents: Vec<MarkupTree<AppMessage>>,
     },
     Stack {
         attrs: Attributes,
-        contents: Vec<MarkupType>,
+        contents: Vec<MarkupTree<AppMessage>>,
     },
     Label(String),
     Value(Value),
+    Phantom(PhantomData<AppMessage>),
 }
 
 #[cfg(test)]

@@ -6,16 +6,16 @@ mod parser;
 
 pub use error::Error;
 pub use message::Message;
-pub use parser::MarkupType;
+pub use parser::MarkupTree;
 pub use parser::SnowcapParser;
 
 #[derive(Debug)]
-pub struct Snowcap {
-    root: MarkupType,
+pub struct Snowcap<AppMessage> {
+    root: MarkupTree<AppMessage>,
 }
 
-impl Snowcap {
-    pub fn root(&self) -> &MarkupType {
+impl<AppMessage> Snowcap<AppMessage> {
+    pub fn root(&self) -> &MarkupTree<AppMessage> {
         &self.root
     }
 }

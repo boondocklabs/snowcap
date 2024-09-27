@@ -27,7 +27,7 @@
                     markdown(file!("README.md")),
                     qr-code<cell-size:10>(qr!("https://iced.rs")),
                     button(text<size:20>("Text in a Button")),
-                    toggler<toggled:true, size:30>()
+                    toggler<toggled:false, size:30>()
                 ]
             },
 

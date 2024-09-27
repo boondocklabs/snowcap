@@ -5,7 +5,7 @@ use iced::{
     Element, Task,
 };
 use notify::{event::ModifyKind, RecommendedWatcher, Watcher};
-use snowcap::{Message, Snowcap, SnowcapParser};
+use snowcap::{Snowcap, SnowcapParser};
 use tracing::{debug, error, info};
 use tracing_subscriber;
 
@@ -35,7 +35,9 @@ pub fn main() -> iced::Result {
         let viewer = SnowcapViewer::new(filename.clone());
         (
             viewer,
-            Task::run(rx, |event| Message::Watcher(event.unwrap())),
+            Task::run(rx, |event| {
+                snowcap::Message::App(Message::Watcher(event.unwrap()))
+            }),
         )
     })
 }
@@ -43,7 +45,7 @@ pub fn main() -> iced::Result {
 struct SnowcapViewer {
     filename: String,
     parse_error: Option<snowcap::Error>,
-    root: Option<Snowcap>,
+    root: Option<Snowcap<Message>>,
 }
 
 impl SnowcapViewer {
@@ -76,34 +78,43 @@ impl SnowcapViewer {
     }
 }
 
-/*
 #[derive(Debug, Clone)]
 enum Message {
+    /// A variant for handling file system watcher events.
+    ///
+    /// This variant contains a [`notify::Event`] that encapsulates file
+    /// system changes, useful for tracking changes in files or directories.
     Watcher(notify::Event),
 }
-*/
 
 impl SnowcapViewer {
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: snowcap::Message<Message>) {
         match message {
-            Message::Watcher(event) => {
-                debug!("Watcher {event:?}");
-                match event.kind {
-                    notify::EventKind::Modify(ModifyKind::Data(_)) => {
-                        info!("Snowcap File Modified. Reloading");
-                        self.load().ok();
+            snowcap::Message::App(app) => match app {
+                Message::Watcher(event) => {
+                    debug!("Watcher {event:?}");
+                    match event.kind {
+                        notify::EventKind::Modify(ModifyKind::Data(_)) => {
+                            info!("Snowcap File Modified. Reloading");
+                            self.load().ok();
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
+            },
+            snowcap::Message::Markdown(url) => {
+                info!("Markdown URL click {url}")
             }
-
-            _ => {
-                info!("Unhandled message {message:?}")
+            snowcap::Message::Button => {
+                info!("Button clicked")
+            }
+            snowcap::Message::Toggler(toggled) => {
+                info!("Toggler {toggled}")
             }
         }
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<snowcap::Message<Message>> {
         if let Some(root) = &self.root {
             match root.root().try_into() {
                 Ok(content) => content,
