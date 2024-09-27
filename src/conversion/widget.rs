@@ -98,6 +98,7 @@ impl SnowcapWidget {
                             let pixels: iced::Pixels = attr.try_into()?;
                             toggler.size(pixels)
                         }
+                        "label" => toggler.label(attr),
                         _ => toggler,
                     };
                 }

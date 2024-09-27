@@ -113,7 +113,7 @@ impl FileProvider {
     }
 
     pub fn load_text(&mut self) -> Result<(), Error> {
-        info!("Loading file data from {:?}", self.path);
+        info!("Loading text data from {:?}", self.path);
         let mut file = File::open(&self.path)?;
 
         let mut buf = String::new();

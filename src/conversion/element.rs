@@ -1,5 +1,5 @@
 use iced::{
-    widget::{text::IntoFragment, Space, Text},
+    widget::{Space, Text},
     Element,
 };
 
@@ -13,28 +13,6 @@ use crate::{
 use super::{
     column::SnowcapColumn, container::SnowcapContainer, row::SnowcapRow, stack::SnowcapStack,
 };
-
-impl<'a, AppMessage> IntoFragment<'a> for &MarkupTree<AppMessage> {
-    fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
-        match self {
-            MarkupTree::Value(value) => match value {
-                Value::String(s) => s.clone().into(),
-                Value::Number(n) => format!("{n}").into(),
-                Value::Boolean(b) => format!("{b}").into(),
-                Value::Null => format!("null").into(),
-                Value::DataSource {
-                    name: _,
-                    value: _,
-                    provider,
-                } => match provider {
-                    //DataProvider::File(file_provider) => file_provider.data().clone().into(),
-                    _ => "Unsupported DataProvider".into(),
-                },
-            },
-            _ => "Expecting MarkupType::Value".into(),
-        }
-    }
-}
 
 impl<'a, SnowcapMessage, AppMessage> TryInto<Element<'a, SnowcapMessage>>
     for &'a MarkupTree<AppMessage>

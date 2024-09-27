@@ -26,8 +26,8 @@
                 |<align:"center">[
                     markdown(file!("README.md")),
                     qr-code<cell-size:10>(qr!("https://iced.rs")),
-                    button(text<size:20>("Text in a Button")),
-                    toggler<toggled:false, size:30>()
+                    button(text<size:20>("Button")),
+                    toggler<toggled:false, label:"Toggle Label", size:30>()
                 ]
             },
 
@@ -35,8 +35,8 @@
 
             {<width:200, align-x:"center">
                 |[
-                    text<size:24>("Right!"),
-                    text(file!("README.md"))
+                    text<size:24>("Ipsum"),
+                    text(file!("samples/filler.txt"))
                 ]
             }
         ]
