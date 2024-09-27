@@ -15,11 +15,15 @@ pub enum ParseError {
 pub enum ConversionError {
     #[error("invalid type {0}")]
     InvalidType(String),
+
     #[error("unsupported attribute {0}")]
     UnsupportedAttribute(String),
 
     #[error("missing {0}")]
     Missing(String),
+
+    #[error("unknown {0}")]
+    Unknown(String),
 }
 
 #[derive(Error, Debug)]

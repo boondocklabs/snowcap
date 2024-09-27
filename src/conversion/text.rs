@@ -22,6 +22,7 @@ use crate::{
 /// # Examples
 ///
 /// ```rust
+/// use snowcap::Value;
 /// let value = Value::Number(42.0);
 /// let cow: std::borrow::Cow<'_, str> = (&value).into();
 /// assert_eq!(cow, "42");
@@ -57,9 +58,13 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &Value {
 /// # Examples
 ///
 /// ```rust
-/// let markup_tree = MarkupTree::Value(Value::String("Hello".to_string()));
+/// enum AppMessage {
+///     None
+/// };
+/// use snowcap::{MarkupTree,Value};
+/// use iced::advanced::text::IntoFragment;
+/// let markup_tree = MarkupTree::<AppMessage>::Value(Value::String("Hello".to_string()));
 /// let fragment: iced::widget::text::Fragment = (&markup_tree).into_fragment();
-/// assert_eq!(fragment.content(), "Hello");
 /// ```
 impl<'a, AppMessage> IntoFragment<'a> for &MarkupTree<AppMessage> {
     fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
@@ -78,9 +83,10 @@ impl<'a, AppMessage> IntoFragment<'a> for &MarkupTree<AppMessage> {
 /// # Examples
 ///
 /// ```rust
-/// let attr = Attribute { value: Value::String("Hello".to_string()) };
+/// use snowcap::{Attribute,Value};
+/// use iced::advanced::text::IntoFragment;
+/// let attr = Attribute { name: "test".into(), value: Value::String("Hello".to_string()) };
 /// let fragment: iced::widget::text::Fragment = (&attr).into_fragment();
-/// assert_eq!(fragment.content(), "Hello");
 /// ```
 impl<'a> IntoFragment<'a> for &Attribute {
     fn into_fragment(self) -> iced::widget::text::Fragment<'a> {

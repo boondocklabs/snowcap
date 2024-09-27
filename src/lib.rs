@@ -4,10 +4,13 @@ mod error;
 mod message;
 mod parser;
 
-pub use error::Error;
+pub use conversion::theme::SnowcapTheme;
+pub use error::*;
 pub use message::Message;
+pub use parser::Attribute;
 pub use parser::MarkupTree;
 pub use parser::SnowcapParser;
+pub use parser::Value;
 
 #[derive(Debug)]
 pub struct Snowcap<AppMessage> {
