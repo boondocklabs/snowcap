@@ -163,8 +163,8 @@ impl SnowcapWidget {
             }
             "image" => {
                 if let MarkupTree::Value(Value::DataSource {
-                    name,
-                    value,
+                    name: _,
+                    value: _,
                     provider,
                 }) = content
                 {
