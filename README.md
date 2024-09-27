@@ -1,6 +1,6 @@
 # Snowcap
 
-Early stage markup for [iced](iced.rs) using [pest](pest.rs)
+Early stage markup for [iced](https://iced.rs) using [pest](https://pest.rs)
 
 There is a simple viewer in bin/ with hot reloading.
 To run it, use `cargo run samples/test.iced` from the root of the project.
