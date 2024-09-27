@@ -22,6 +22,7 @@ The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example lay
 | Button        | `button<attr:val,...>(element)`
 | Toggler       | `toggler<attr:val,...>(element)`
 | QRCode	| `qrcode<cell-size:10>(qr!("https://iced.rs"))`
+| Markdown      | `markdown(file!("README.md"))`
 
 For example, creating a container with a column would look like
 
