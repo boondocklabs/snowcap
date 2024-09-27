@@ -1,6 +1,6 @@
 [package]
 name = "snowcap"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license-file = "LICENSE.txt"
 description = "A simple markup language for iced"
@@ -10,7 +10,14 @@ readme = "README.md"
 
 [dependencies]
 #iced = { git = "https://github.com/iced-rs/iced.git", version = "0.14.0-dev" }
-iced = { version = "0.13.1", features = ["qr_code", "svg", "canvas", "advanced", "image", "markdown"] }
+iced = { version = "0.13.1", features = [
+    "qr_code",
+    "svg",
+    "canvas",
+    "advanced",
+    "image",
+    "markdown",
+] }
 notify = "6.1.1"
 pest = "2.7.13"
 pest_derive = "2.7.13"
