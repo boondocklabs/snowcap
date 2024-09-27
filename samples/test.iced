@@ -1,8 +1,9 @@
 {
     |[
         {<align-x:"center", align-y:"center", padding:0, height:100, width:"fill">
-            row<align:"center">[
-                text<size:60>("Snowcap Viewer")
+            row<align:"center", spacing:30>[
+                image(file!("samples/ferris.png")),
+                text<size:40>("Snowcap Viewer")
             ]
         },
 

@@ -137,6 +137,15 @@ impl FileProvider {
         Ok(())
     }
 
+    pub fn load_image(&mut self) -> Result<(), Error> {
+        info!("Loading image from {:?}", self.path);
+
+        let handle: iced::widget::image::Handle = self.path.clone().into();
+        self.data = Box::new(DataType::Image(handle));
+
+        Ok(())
+    }
+
     pub fn data<'a>(&'a self) -> &'a DataType {
         &self.data
     }

@@ -1,4 +1,4 @@
-use iced::widget::{Button, QRCode, Rule, Space, Toggler};
+use iced::widget::{Button, Image, QRCode, Rule, Space, Toggler};
 use iced::{widget::Text, Element};
 use iced::{Length, Pixels};
 use tracing::debug;
@@ -158,7 +158,28 @@ impl SnowcapWidget {
                         panic!("Expect DataProvider::File");
                     }
                 } else {
-                    panic!("Expect MarkupType::Value")
+                    panic!("Expect MarkupType::Value::DataSource")
+                }
+            }
+            "image" => {
+                if let MarkupTree::Value(Value::DataSource {
+                    name,
+                    value,
+                    provider,
+                }) = content
+                {
+                    if let DataProvider::File(file) = provider {
+                        if let DataType::Image(handle) = file.data() {
+                            let image = Image::new(handle);
+                            Ok(image.into())
+                        } else {
+                            panic!("Expecting DataType::Image")
+                        }
+                    } else {
+                        panic!("Expecting DataProvider::File")
+                    }
+                } else {
+                    panic!("Expect MarkupType::Value::DataSource")
                 }
             }
             _ => {

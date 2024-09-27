@@ -19,8 +19,14 @@ impl SnowcapRow {
 
         for attr in attrs {
             row = match attr.name.as_str() {
-                "spacing" => todo!(),
-                "padding" => todo!(),
+                "spacing" => {
+                    let spacing: Result<iced::Pixels, Error> = (&attr.value).try_into();
+                    row.spacing(spacing?)
+                }
+                "padding" => {
+                    let padding: Result<iced::Padding, Error> = (&attr.value).try_into();
+                    row.padding(padding?)
+                }
                 "width" => {
                     let width: Result<iced::Length, Error> = (&attr.value).try_into();
                     row.width(width?)

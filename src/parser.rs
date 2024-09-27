@@ -67,6 +67,8 @@ impl<AppMessage> SnowcapParser<AppMessage> {
                         let mut provider = FileProvider::new(&value);
                         if value.ends_with(".md") {
                             provider.load_markdown().unwrap();
+                        } else if value.ends_with(".png") {
+                            provider.load_image().unwrap();
                         } else {
                             provider.load_text().unwrap();
                         }
