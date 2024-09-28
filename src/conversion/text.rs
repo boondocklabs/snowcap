@@ -45,6 +45,7 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &Value {
                 },
                 _ => "Unsupported DataProvider".into(),
             },
+            Value::Array(_value) => todo!(),
         }
     }
 }

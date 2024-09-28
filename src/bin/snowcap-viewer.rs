@@ -36,7 +36,9 @@ pub fn main() -> iced::Result {
         .run_with(move || {
             let viewer = SnowcapViewer::new(filename.clone());
             (
+                // Set the initial state
                 viewer,
+                // Initial task to read events from the watcher channel and wrap them in a Message
                 Task::run(rx, |event| {
                     snowcap::Message::App(Message::Watcher(event.unwrap()))
                 }),
@@ -113,6 +115,9 @@ impl SnowcapViewer {
             snowcap::Message::Toggler(toggled) => {
                 info!("Toggler {toggled}")
             }
+            snowcap::Message::PickListSelected(selected) => {
+                info!("Picklist selected {selected}")
+            }
         }
     }
 
@@ -133,6 +138,7 @@ impl SnowcapViewer {
     }
 
     fn theme(&self) -> Theme {
-        Theme::TokyoNight
+        //Theme::TokyoNight
+        Theme::CatppuccinFrappe
     }
 }

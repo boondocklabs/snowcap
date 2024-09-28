@@ -1,6 +1,9 @@
-use iced::widget::{Button, Image, QRCode, Rule, Space, Themer, Toggler};
+use std::sync::Mutex;
+
+use iced::widget::{Button, Image, PickList, QRCode, Rule, Space, Svg, Themer, Toggler};
 use iced::{widget::Text, Element};
 use iced::{Length, Pixels, Theme};
+use once_cell::sync::Lazy;
 use tracing::{debug, info};
 
 use crate::data::{DataProvider, DataType};
@@ -20,7 +23,7 @@ impl SnowcapWidget {
     ) -> Result<Element<'a, SnowcapMessage>, Error>
     where
         SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: std::fmt::Debug,
+        AppMessage: 'a + Clone + std::fmt::Debug,
     {
         match name.as_str() {
             "text" => {
@@ -141,7 +144,6 @@ impl SnowcapWidget {
                 }) = content
                 {
                     if let DataProvider::File(file) = provider {
-                        //file.load_markdown().unwrap();
                         if let DataType::Markdown(data) = file.data() {
                             let element = iced::widget::markdown::view(
                                 data,
@@ -186,24 +188,74 @@ impl SnowcapWidget {
                 }
             }
             "themer" => {
+                // Create an iced::Theme from the name in the "theme" attribute
                 let theme: Theme = attrs
                     .get("theme")
                     .ok_or_else(|| Error::MissingAttribute("theme".to_string()))?
                     .try_into()?;
 
-                debug!("Themer content {:#?}", content);
+                let content: Element<'a, SnowcapMessage, Theme> = content.try_into()?;
 
-                let content: Element<'a, SnowcapMessage> = content.try_into()?;
-
-                Ok(Themer::new(
-                    move |_old_theme| {
-                        info!("Setting theme to {:?}", theme);
+                let themer = Themer::new(
+                    move |old_theme| {
+                        info!("Themer from {:?} to {:?}", old_theme, theme);
                         theme.clone()
                     },
                     content,
-                )
-                .into())
+                );
+                Ok(themer.into())
             }
+            "svg" => {
+                if let MarkupTree::Value(Value::DataSource {
+                    name: _,
+                    value: _,
+                    provider,
+                }) = content
+                {
+                    if let DataProvider::File(file) = provider {
+                        if let DataType::Svg(handle) = file.data() {
+                            let svg = Svg::new(handle.clone());
+                            Ok(svg.into())
+                        } else {
+                            panic!("Expecting DataType::Svg")
+                        }
+                    } else {
+                        panic!("Expecting DataProvider::File")
+                    }
+                } else {
+                    panic!("Expect MarkupTree::Value::DataSource")
+                }
+            }
+            "pick-list" => match content {
+                MarkupTree::Value(value) => {
+                    if let Value::Array(values) = value {
+                        let values: Result<Vec<String>, ConversionError> =
+                            values.iter().map(|v| v.try_into()).collect();
+
+                        static CURRENT_SELECTION: Lazy<Mutex<Option<String>>> =
+                            Lazy::new(move || Mutex::new(None));
+
+                        let current = match &*CURRENT_SELECTION.lock().unwrap() {
+                            Some(selection) => selection.clone(),
+                            None => {
+                                // Return the first item as the inital selection
+                                values.as_ref().unwrap().first().unwrap().clone()
+                            }
+                        };
+
+                        let picklist = PickList::new(values?, Some(current), |selected| {
+                            // Store the selected item in the static
+                            *CURRENT_SELECTION.lock().unwrap() = Some(selected.clone());
+                            SnowcapMessage::from(Message::PickListSelected(selected.into()))
+                        });
+
+                        Ok(picklist.into())
+                    } else {
+                        panic!("Expecting Value::Array")
+                    }
+                }
+                _ => panic!("Expecting MarkupTree::Value"),
+            },
             _ => {
                 return Err(Error::Conversion(ConversionError::UnsupportedAttribute(
                     format!("Unhandled element type {name}"),

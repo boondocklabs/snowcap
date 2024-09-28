@@ -11,7 +11,7 @@ impl SnowcapContainer {
     ) -> Result<Element<'a, SnowcapMessage>, Error>
     where
         SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: std::fmt::Debug,
+        AppMessage: 'a + Clone + std::fmt::Debug,
     {
         let content: Element<'a, SnowcapMessage> = content.try_into()?;
 

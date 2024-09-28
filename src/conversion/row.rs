@@ -11,7 +11,7 @@ impl SnowcapRow {
     ) -> Result<Element<'a, SnowcapMessage>, Error>
     where
         SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: std::fmt::Debug,
+        AppMessage: 'a + Clone + std::fmt::Debug,
     {
         let children: Result<Vec<Element<'a, SnowcapMessage>>, Error> =
             contents.into_iter().map(|item| item.try_into()).collect(); // Convert each item into Element

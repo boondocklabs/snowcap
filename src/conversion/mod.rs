@@ -159,6 +159,20 @@ impl TryInto<iced::Pixels> for &Value {
     }
 }
 
+impl TryInto<String> for &Value {
+    type Error = ConversionError;
+
+    fn try_into(self) -> Result<String, Self::Error> {
+        if let Value::String(s) = self {
+            Ok(s.clone())
+        } else {
+            Err(ConversionError::InvalidType(
+                "Expecting Value::String".into(),
+            ))
+        }
+    }
+}
+
 impl TryInto<iced::Length> for &Attribute {
     type Error = Error;
 

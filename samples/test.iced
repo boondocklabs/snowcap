@@ -1,17 +1,19 @@
 {
     |[
-        themer<theme:"dracula">({<align-x:"center", align-y:"center", padding:0, height:100, width:"fill">
+        {<align-x:"center", align-y:"center", padding:0, height:100, width:"fill">
             row<align:"center", spacing:30>[
                 image(file!("samples/ferris.png")),
-                themer<theme:"SolarizedLight">(text<size:40>("Snowcap Viewer"))
+                text<size:40>("Snowcap Viewer")
             ]
-        }),
+        },
 
         rule-horizontal<height:1>(),
 
         -<height:"fill">[
             {<width:200, height:"fill", align-x:"center">
                 |<align:"center">[
+                    svg(file!("samples/coder.svg")),
+                    pick-list(["foo", "bar"]),
                     text<size:24>("I'm some text"),
                     text<size:10>("More text in a Column"),
                     space<size:10>(),

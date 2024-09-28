@@ -18,7 +18,7 @@ impl<'a, SnowcapMessage, AppMessage> TryInto<Element<'a, SnowcapMessage>>
     for &'a MarkupTree<AppMessage>
 where
     SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-    AppMessage: std::fmt::Debug,
+    AppMessage: 'a + Clone + std::fmt::Debug,
 {
     type Error = Error;
 
@@ -60,6 +60,7 @@ where
                         value,
                         provider: _,
                     } => Ok(Text::new(format!("Data source [{name}:{value}]")).into()),
+                    Value::Array(_value) => todo!(),
                 }
             }
             _ => todo!(),

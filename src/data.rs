@@ -9,6 +9,7 @@ use crate::{error::ConversionError, Error};
 pub enum DataType {
     Null,
     Image(iced::widget::image::Handle),
+    Svg(iced::widget::svg::Handle),
     QrCode(iced::widget::qr_code::Data),
     Markdown(Vec<iced::widget::markdown::Item>),
     Text(String),
@@ -142,6 +143,15 @@ impl FileProvider {
 
         let handle: iced::widget::image::Handle = self.path.clone().into();
         self.data = Box::new(DataType::Image(handle));
+
+        Ok(())
+    }
+
+    pub fn load_svg(&mut self) -> Result<(), Error> {
+        info!("Loading SVG from {:?}", self.path);
+
+        let handle: iced::widget::svg::Handle = self.path.clone().into();
+        self.data = Box::new(DataType::Svg(handle));
 
         Ok(())
     }

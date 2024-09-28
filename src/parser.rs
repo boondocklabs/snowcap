@@ -41,6 +41,14 @@ impl<AppMessage> SnowcapParser<AppMessage> {
             .collect()
     }
 
+    fn parse_array(pair: Pair<Rule>) -> Result<Value, ParseError> {
+        println!("{:#?}", pair);
+        let values: Result<Vec<Value>, ParseError> =
+            pair.into_inner().map(|i| Self::parse_value(i)).collect();
+
+        Ok(Value::Array(values?))
+    }
+
     fn parse_value(pair: Pair<Rule>) -> Result<Value, ParseError> {
         match pair.as_rule() {
             Rule::null => Ok(Value::Null),
@@ -68,6 +76,8 @@ impl<AppMessage> SnowcapParser<AppMessage> {
                             provider.load_markdown().unwrap();
                         } else if value.ends_with(".png") {
                             provider.load_image().unwrap();
+                        } else if value.ends_with(".svg") {
+                            provider.load_svg().unwrap();
                         } else {
                             provider.load_text().unwrap();
                         }
@@ -193,6 +203,10 @@ impl<AppMessage> SnowcapParser<AppMessage> {
                         Rule::container => {
                             value = Self::parse_container(pair).unwrap();
                         }
+                        Rule::array => {
+                            let val = Self::parse_array(pair);
+                            value = MarkupTree::Value(val.unwrap());
+                        }
                         _ => {
                             error!("Unhandled element rule {:?}", pair.as_rule())
                         }
@@ -224,17 +238,6 @@ impl Attributes {
         }
         None
     }
-
-    /*
-    pub fn get_mut(&self, name: &str) -> Option<&mut Attribute> {
-        for attr in &mut self.0 {
-            if attr.name.as_str() == name {
-                return Some(attr);
-            }
-        }
-        None
-    }
-    */
 
     pub fn set(&self, name: &str, value: Value) {
         for attr in &self.0 {
@@ -307,6 +310,7 @@ pub enum Value {
     Number(f64),
     Boolean(bool),
     Null,
+    Array(Vec<Value>),
     DataSource {
         name: String,
         value: String,

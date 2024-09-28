@@ -22,4 +22,7 @@ pub enum Message<AppMessage> {
 
     /// A message variant for handling toggler events.
     Toggler(bool),
+
+    /// A pick list was selected
+    PickListSelected(String),
 }
