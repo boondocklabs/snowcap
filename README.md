@@ -7,7 +7,8 @@ To run it, use `cargo run samples/test.iced` from the root of the project.
 
 Here's an example of how the `test.iced` file renders.
 
-<img width="1285" alt="Screenshot 2024-09-27 at 12 08 07 AM" src="https://github.com/user-attachments/assets/b751943f-e08a-4634-8223-49cf222f2772">
+<img width="1362" alt="Screenshot 2024-09-27 at 7 56 55 PM" src="https://github.com/user-attachments/assets/42a627a0-1329-4b74-93ff-bd0c9c3143b1">
+
 
 ## Grammar
 
@@ -28,6 +29,7 @@ The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example lay
 | QRCode	| `qrcode<cell-size:10>(qr!("https://iced.rs"))`
 | Markdown      | `markdown(file!("README.md"))`
 | Image         | `image(file!("samples/ferris.png"))`
+| Svg           | `svg(file!("samples/coder.svg"))`
 
 For example, creating a container with a column would look like
 
