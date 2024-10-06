@@ -8,7 +8,7 @@ use iced::{
 use parking_lot::Mutex;
 use url::Url;
 
-use super::file_provider::FileData;
+use super::FileData;
 
 pub trait Provider: std::fmt::Debug + MaybeSend + MaybeSync {
     fn init_task(&mut self, this: Arc<Mutex<dyn Provider>>, node_id: NodeId) -> Task<Event>;

@@ -27,15 +27,15 @@ pest_derive = "2.7.13"
 reqwest = { version = "0.12.8", features = ["blocking"] }
 strum = { version = "0.26.3", features = ["derive"] }
 thiserror = "1.0.64"
-tokio = { version = "1.40.0", features = ["fs"] }
-#tokio = { version = "1.40.0", features = ["rt"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-tree_magic_mini = "3.1.5"
+
 url = "2.5.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 notify = "6.1.1"
+tree_magic_mini = "3.1.5"
+tokio = { version = "1.40.0", features = ["fs"] }
 
 [dev-dependencies]
 approx = "0.5.1"

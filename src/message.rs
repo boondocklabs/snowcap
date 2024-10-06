@@ -58,6 +58,7 @@ pub enum Event {
     Empty,
 
     // Request a file be added to the watcher
+    #[cfg(not(target_arch = "wasm32"))]
     WatchFileRequest {
         filename: PathBuf,
         provider: Arc<Mutex<dyn Provider>>,

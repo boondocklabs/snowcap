@@ -4,14 +4,17 @@ use std::{
 };
 
 use file_format::FileFormat;
-use iced::{widget::markdown, Task};
+use iced::Task;
 use parking_lot::Mutex;
 use tokio::io::AsyncReadExt;
 use tracing::{error, info, info_span};
 
 use crate::{connector::Inlet, message::Event, parser::NodeId, Error};
 
-use super::provider::{Provider, ProviderEvent};
+use super::{
+    provider::{Provider, ProviderEvent},
+    FileData,
+};
 
 #[derive(Debug)]
 pub struct FileProvider {
@@ -33,20 +36,6 @@ impl FileProvider {
             node_id: None,
             inlet: Mutex::new(None),
         })
-    }
-}
-
-#[derive(Debug)]
-pub enum FileData {
-    Svg(iced::widget::svg::Handle),
-    Image(iced::widget::image::Handle),
-    Markdown(Vec<markdown::Item>),
-    Text(String),
-}
-
-impl Clone for FileData {
-    fn clone(&self) -> Self {
-        panic!("Shouldn't be cloning FileData")
     }
 }
 

@@ -44,20 +44,22 @@ pub enum Error {
     Io(#[from] std::io::Error),
 
     #[error(transparent)]
-    Notify(#[from] notify::Error),
-
-    #[error(transparent)]
     Url(#[from] url::ParseError),
 
     #[error("Unhandled {0}")]
     Unhandled(String),
 
     #[error(transparent)]
-    Tokio(tokio::task::JoinError),
-
-    #[error(transparent)]
     Encoding(FromUtf8Error),
 
     #[error("Node {0} Not Found")]
     NodeNotFound(NodeId),
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[error(transparent)]
+    Tokio(tokio::task::JoinError),
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[error(transparent)]
+    Notify(#[from] notify::Error),
 }

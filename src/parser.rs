@@ -16,8 +16,11 @@ use tracing::{debug, error};
 use crate::attribute::{Attribute, Attributes};
 use crate::data::provider::Provider;
 use crate::data::url_provider::UrlProvider;
-use crate::data::{DataType, FileProvider};
+use crate::data::DataType;
 use crate::Message;
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::data::FileProvider;
 
 pub(crate) mod color;
 pub(crate) mod error;
@@ -94,16 +97,17 @@ impl<AppMessage> SnowcapParser<AppMessage> {
                             provider: None,
                         });
                     }
-                    "file" => {
-                        let path = &PathBuf::from(value.clone());
-                        let provider = FileProvider::new(path).unwrap();
+                    "url" => {
+                        let provider = UrlProvider::new(value.as_str())?;
                         return Ok(Value::Data {
                             data: None,
                             provider: Some(Arc::new(Mutex::new(provider))),
                         });
                     }
-                    "url" => {
-                        let provider = UrlProvider::new(value.as_str())?;
+                    #[cfg(not(target_arch = "wasm32"))]
+                    "file" => {
+                        let path = &PathBuf::from(value.clone());
+                        let provider = FileProvider::new(path).unwrap();
                         return Ok(Value::Data {
                             data: None,
                             provider: Some(Arc::new(Mutex::new(provider))),

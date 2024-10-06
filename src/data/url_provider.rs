@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use super::{
-    file_provider::FileData,
     provider::{Provider, ProviderEvent},
+    FileData,
 };
 use crate::{
     connector::Inlet,

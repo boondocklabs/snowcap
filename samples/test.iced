@@ -50,10 +50,11 @@
                 rule-vertical<width:2>(),
 
                 // Right Column
-                {<width:200, align-x:"center", padding:10.0>
+                {<width:200, align-x:"left", padding:10.0>
                     |[
                         text<size:24>("Ipsum"),
-                        text(file!("samples/filler.txt"))
+                        text(url!("http://corporatelorem.kovah.de/api/3?format=text"))
+                        //text(file!("samples/filler.txt"))
                     ]
                 }
             ]

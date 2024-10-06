@@ -8,9 +8,9 @@ mod node;
 mod parser;
 
 use connector::{Endpoint, Inlet};
-use data::file_provider::FileData;
 use data::provider::Provider;
 use data::DataType;
+use data::FileData;
 use data::MarkdownItems;
 pub use iced;
 use iced::advanced::graphics::futures::MaybeSend;
@@ -179,6 +179,7 @@ where
         watcher
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn load_file(&mut self, filename: String) -> Result<(), Error> {
         let filename = &PathBuf::from(&filename);
         let tree = SnowcapParser::parse_file(&filename)?;
@@ -201,24 +202,19 @@ where
         Ok(())
     }
 
-    /*
-    pub fn from_memory(data: &str) -> Result<Self, Error> {
+    pub fn load_memory(&mut self, data: &str) -> Result<(), Error> {
         let tree = SnowcapParser::parse_memory(data)?;
+        self.node_manager = NodeManager::from_tree(tree.clone())?;
 
-        Ok(Self {
-            #[cfg(not(target_arch = "wasm32"))]
-            filename: None,
-            node_manager: NodeManager::from_tree(tree.clone())?,
-            tree,
-            #[cfg(not(target_arch = "wasm32"))]
-            watcher: None,
-            #[cfg(not(target_arch = "wasm32"))]
-            watcher_rx: None,
-
-            watch_nodes: HashMap::new(),
-        })
+        self.tree = Some(tree);
+        Ok(())
     }
-    */
+
+    pub fn from_memory(data: &str) -> Result<Self, Error> {
+        let mut snow = Snowcap::new()?;
+        snow.load_memory(data)?;
+        Ok(snow)
+    }
 
     pub fn root(&self) -> TreeNode<AppMessage> {
         self.tree.as_ref().unwrap().clone()
@@ -244,9 +240,12 @@ where
             Message::Event(Event::Debug("Sending...".to_string()))
         }));
 
+        info!("Starting init tasks");
+
         Task::batch(tasks)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn reload_file(&mut self) -> Result<(), Error> {
         let filename = self.filename.clone().ok_or(Error::MissingAttribute(
             "No snowcap grammar filename in self".to_string(),
@@ -308,7 +307,7 @@ where
                             Ok(node) => {
                                 if let MarkupTree::Value(value) = node.inner() {
                                     match data {
-                                        data::file_provider::FileData::Svg(handle) => {
+                                        FileData::Svg(handle) => {
                                             let mut val = value.borrow_mut();
                                             match &mut *val {
                                                 Value::Data { data, .. } => {
@@ -318,7 +317,7 @@ where
                                             }
                                         }
 
-                                        data::file_provider::FileData::Image(handle) => {
+                                        FileData::Image(handle) => {
                                             let mut val = value.borrow_mut();
                                             match &mut *val {
                                                 Value::Data { data, .. } => {
@@ -327,7 +326,7 @@ where
                                                 _ => panic!("Expecting Value::Data"),
                                             }
                                         }
-                                        data::file_provider::FileData::Text(text) => {
+                                        FileData::Text(text) => {
                                             let mut val = value.borrow_mut();
                                             match &mut *val {
                                                 Value::Data { data, .. } => {
@@ -336,7 +335,7 @@ where
                                                 _ => panic!("Expecting Value::Data"),
                                             }
                                         }
-                                        data::file_provider::FileData::Markdown(items) => {
+                                        FileData::Markdown(items) => {
                                             let mut val = value.borrow_mut();
                                             match &mut *val {
                                                 Value::Data { data, .. } => {
@@ -359,7 +358,7 @@ where
                             Ok(node) => {
                                 if let MarkupTree::Value(value) = node.inner() {
                                     match data {
-                                        data::file_provider::FileData::Text(text) => {
+                                        data::FileData::Text(text) => {
                                             match &mut *value.borrow_mut() {
                                                 Value::Data { data, .. } => {
                                                     data.replace(Arc::new(DataType::Text(text)));
@@ -388,6 +387,7 @@ where
                 Task::none()
             }
             Event::Empty => todo!(),
+            #[cfg(not(target_arch = "wasm32"))]
             Event::WatchFileRequest { filename, provider } => {
                 info!("{provider:?} register {filename:?} with watcher");
 
