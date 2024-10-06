@@ -3,27 +3,40 @@ name = "snowcap"
 version = "0.1.3"
 edition = "2021"
 license = "MIT"
-license-file = "LICENSE.txt"
 description = "A simple markup language for iced"
 homepage = "https://github.com/boondocklabs/snowcap"
 repository = "https://github.com/boondocklabs/snowcap"
 readme = "README.md"
 
 [dependencies]
-#iced = { git = "https://github.com/iced-rs/iced.git", version = "0.14.0-dev" }
-iced = { version = "0.13.1", features = [
+file-format = { version = "0.25.0", features = ["reader-txt", "reader-xml"] }
+iced = { git = "https://github.com/boondocklabs/iced.git", branch = "qr-code-borrow", features = [
     "qr_code",
     "svg",
     "canvas",
     "advanced",
     "image",
     "markdown",
+    "tokio",
 ] }
-notify = "6.1.1"
+mime = "0.3.17"
 once_cell = "1.19.0"
+parking_lot = { version = "0.12.3", features = ["owning_ref"] }
 pest = "2.7.13"
 pest_derive = "2.7.13"
+reqwest = { version = "0.12.8", features = ["blocking"] }
 strum = { version = "0.26.3", features = ["derive"] }
 thiserror = "1.0.64"
+tokio = { version = "1.40.0", features = ["fs"] }
+#tokio = { version = "1.40.0", features = ["rt"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tree_magic_mini = "3.1.5"
+url = "2.5.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+notify = "6.1.1"
+
+[dev-dependencies]
+approx = "0.5.1"
+tracing-test = "0.2.5"

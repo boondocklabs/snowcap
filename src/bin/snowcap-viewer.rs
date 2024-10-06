@@ -1,47 +1,24 @@
-use std::fs;
-
-use iced::{
-    futures::{self, channel::mpsc::channel, SinkExt},
-    Element, Task, Theme,
-};
-use notify::{event::ModifyKind, RecommendedWatcher, Watcher};
-use snowcap::{Snowcap, SnowcapParser};
-use tracing::{debug, error, info};
-use tracing_subscriber;
+use iced::{Element, Task, Theme};
+use snowcap::Snowcap;
+use tracing_subscriber::{self, EnvFilter};
 
 pub fn main() -> iced::Result {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     let args: Vec<String> = std::env::args().collect();
 
     let filename = args[1].clone();
 
-    let (mut tx, rx) = channel(1);
-    let mut watcher = RecommendedWatcher::new(
-        move |res| {
-            futures::executor::block_on(async {
-                tx.send(res).await.unwrap();
-            })
-        },
-        notify::Config::default(),
-    )
-    .unwrap();
-
-    watcher
-        .watch(filename.as_ref(), notify::RecursiveMode::Recursive)
-        .unwrap();
-
     iced::application("Snowcap", SnowcapViewer::update, SnowcapViewer::view)
         .theme(SnowcapViewer::theme)
         .run_with(move || {
-            let viewer = SnowcapViewer::new(filename.clone());
+            let mut viewer = SnowcapViewer::new(filename.clone());
+            let init_task = viewer.init();
             (
-                // Set the initial state
-                viewer,
-                // Initial task to read events from the watcher channel and wrap them in a Message
-                Task::run(rx, |event| {
-                    snowcap::Message::App(Message::Watcher(event.unwrap()))
-                }),
+                // Provide initial state and init task
+                viewer, init_task,
             )
         })
 }
@@ -49,14 +26,14 @@ pub fn main() -> iced::Result {
 struct SnowcapViewer {
     filename: String,
     parse_error: Option<snowcap::Error>,
-    root: Option<Snowcap<Message>>,
+    snow: Option<Snowcap<Message>>,
 }
 
 impl SnowcapViewer {
     pub fn new(filename: String) -> Self {
         let mut viewer = Self {
             filename,
-            root: None,
+            snow: None,
             parse_error: None,
         };
         viewer.load().ok();
@@ -64,35 +41,36 @@ impl SnowcapViewer {
     }
 
     pub fn load(&mut self) -> Result<(), snowcap::Error> {
-        let data = fs::read_to_string(&self.filename).expect("cannot read file");
-
-        match SnowcapParser::parse_file(&data) {
-            Ok(root) => {
-                self.root = Some(root);
-                debug!("{:#?}", self.root);
-                self.parse_error = None;
-            }
-            Err(e) => {
-                self.root = None;
-                self.parse_error = Some(e);
-            }
-        }
+        let mut snow = Snowcap::new()?;
+        snow.load_file(self.filename.clone())?;
+        self.snow = Some(snow);
 
         Ok(())
+    }
+
+    fn init(&mut self) -> Task<snowcap::Message<Message>> {
+        if let Some(snow) = &mut self.snow {
+            return snow.init();
+        }
+        Task::none()
     }
 }
 
 #[derive(Debug, Clone)]
-enum Message {
-    /// A variant for handling file system watcher events.
-    ///
-    /// This variant contains a [`notify::Event`] that encapsulates file
-    /// system changes, useful for tracking changes in files or directories.
-    Watcher(notify::Event),
-}
+enum Message {}
 
 impl SnowcapViewer {
-    fn update(&mut self, message: snowcap::Message<Message>) {
+    fn update(
+        &mut self,
+        mut message: snowcap::Message<Message>,
+    ) -> Task<snowcap::Message<Message>> {
+        if let Some(snow) = &mut self.snow {
+            snow.update(&mut message)
+        } else {
+            Task::none()
+        }
+
+        /*
         match message {
             snowcap::Message::App(app) => match app {
                 Message::Watcher(event) => {
@@ -101,35 +79,19 @@ impl SnowcapViewer {
                         notify::EventKind::Modify(ModifyKind::Data(_)) => {
                             info!("Snowcap File Modified. Reloading");
                             self.load().ok();
+                            Task::none()
                         }
-                        _ => {}
+                        _ => Task::none(),
                     }
                 }
             },
-            snowcap::Message::Markdown(url) => {
-                info!("Markdown URL click {url}")
-            }
-            snowcap::Message::Button => {
-                info!("Button clicked")
-            }
-            snowcap::Message::Toggler(toggled) => {
-                info!("Toggler {toggled}")
-            }
-            snowcap::Message::PickListSelected(selected) => {
-                info!("Picklist selected {selected}")
-            }
         }
+        */
     }
 
     fn view(&self) -> Element<snowcap::Message<Message>> {
-        if let Some(root) = &self.root {
-            match root.root().try_into() {
-                Ok(content) => content,
-                Err(e) => {
-                    error!("{e:?}");
-                    iced::widget::text(format!("{e:?}")).into()
-                }
-            }
+        if let Some(snow) = &self.snow {
+            snow.view()
         } else if let Some(err) = &self.parse_error {
             iced::widget::text(format!("{err:#?}")).into()
         } else {

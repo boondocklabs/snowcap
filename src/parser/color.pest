@@ -1,0 +1,22 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+color_hex_rrggbbaa = { ASCII_HEX_DIGIT{8} }
+color_hex_rrggbb   = { ASCII_HEX_DIGIT{6} }
+color_hex_rgba     = { ASCII_HEX_DIGIT{4} }
+color_hex_rgb      = { ASCII_HEX_DIGIT{3} }
+color_hex          = { "#" ~ (color_hex_rrggbbaa | color_hex_rrggbb | color_hex_rgba | color_hex_rgb) }
+
+color_rgba  = { "color(" ~ float ~ ("," ~ float){3} ~ ")" }
+color_rgb   = { "color(" ~ float ~ ("," ~ float){2} ~ ")" }
+color_rgba8 = { "color(" ~ integer ~ ("," ~ integer){2} ~ "," ~ float ~ ")" }
+color_rgb8  = { "color(" ~ integer ~ ("," ~ integer){2} ~ ")" }
+
+float = @{
+    ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)
+}
+
+integer = @{
+    ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
+}
+
+color = _{ SOI ~ (color_hex | color_rgba | color_rgb | color_rgba8 | color_rgb8) ~ EOI }

@@ -43,5 +43,3 @@ For example, creating a container with a column would look like
 ```
 
 <img width="537" alt="Screenshot 2024-09-25 at 8 36 26 PM" src="https://github.com/user-attachments/assets/db014468-8e9a-46c7-b7ee-d8e418077ce6">
-
-

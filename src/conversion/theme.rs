@@ -1,4 +1,4 @@
-use crate::{error::ConversionError, Attribute, Value};
+use crate::{attribute::Attribute, error::ConversionError, Value};
 use iced::Theme;
 
 /// A wrapper around the `Theme` enum that provides additional functionality,
@@ -143,6 +143,14 @@ impl TryInto<Theme> for &Value {
 }
 
 impl TryInto<Theme> for &Attribute {
+    type Error = ConversionError;
+
+    fn try_into(self) -> Result<Theme, Self::Error> {
+        (&*self.value()).try_into()
+    }
+}
+
+impl TryInto<Theme> for Attribute {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<Theme, Self::Error> {

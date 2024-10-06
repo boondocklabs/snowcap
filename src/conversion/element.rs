@@ -5,9 +5,9 @@ use iced::{
 
 use crate::{
     conversion::widget::SnowcapWidget,
-    error::Error,
     message::Message,
-    parser::{MarkupTree, Value},
+    parser::{MarkupTree, TreeNode, Value},
+    ConversionError,
 };
 
 use super::{
@@ -15,55 +15,60 @@ use super::{
 };
 
 impl<'a, SnowcapMessage, AppMessage> TryInto<Element<'a, SnowcapMessage>>
-    for &'a MarkupTree<AppMessage>
+    for &'a TreeNode<AppMessage>
 where
     SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
     AppMessage: 'a + Clone + std::fmt::Debug,
 {
-    type Error = Error;
+    type Error = ConversionError;
 
-    fn try_into(mut self) -> Result<Element<'a, SnowcapMessage>, Error> {
-        match &mut self {
+    fn try_into(self) -> Result<Element<'a, SnowcapMessage>, Self::Error> {
+        match &*self.inner() {
             MarkupTree::None => Ok(Space::new(0, 0).into()),
 
-            MarkupTree::Element {
+            MarkupTree::Widget {
+                element_id: _,
                 name,
                 attrs,
                 content,
-            } => SnowcapWidget::convert::<SnowcapMessage, AppMessage>(name, attrs, content),
+            } => SnowcapWidget::convert::<SnowcapMessage, AppMessage>(self, name, attrs, content),
 
             MarkupTree::Container { content, attrs } => {
                 SnowcapContainer::convert::<SnowcapMessage, AppMessage>(attrs, content)
             }
 
-            MarkupTree::Row { attrs, contents } => {
-                SnowcapRow::convert::<SnowcapMessage, AppMessage>(attrs, contents)
-            }
+            MarkupTree::Row {
+                element_id: _,
+                attrs,
+                contents,
+            } => SnowcapRow::convert::<SnowcapMessage, AppMessage>(attrs, contents),
 
-            MarkupTree::Column { attrs, contents } => {
-                SnowcapColumn::convert::<SnowcapMessage, AppMessage>(attrs, contents)
-            }
+            MarkupTree::Column {
+                element_id: _,
+                attrs,
+                contents,
+            } => SnowcapColumn::convert::<SnowcapMessage, AppMessage>(attrs, contents),
 
-            MarkupTree::Stack { attrs, contents } => {
-                SnowcapStack::convert::<SnowcapMessage, AppMessage>(attrs, contents)
-            }
-            MarkupTree::Label(_) => todo!(),
+            MarkupTree::Stack {
+                element_id: _,
+                attrs,
+                contents,
+            } => SnowcapStack::convert::<SnowcapMessage, AppMessage>(attrs, contents),
             MarkupTree::Value(value) => {
                 // Convert Values to iced Elements
-                match value {
-                    Value::String(str) => Ok(Text::new(str.clone()).into()),
-                    Value::Number(num) => Ok(Text::new(num).into()),
-                    Value::Boolean(val) => Ok(Text::new(val).into()),
-                    Value::Null => Ok(Text::new("null").into()),
-                    Value::DataSource {
-                        name,
-                        value,
-                        provider: _,
-                    } => Ok(Text::new(format!("Data source [{name}:{value}]")).into()),
+                let val = match &*value.borrow() {
+                    Value::String(str) => Text::new(str.clone()).into(),
+                    Value::Number(num) => Text::new(num).into(),
+                    Value::Boolean(val) => Text::new(val).into(),
+
+                    // TODO: We could return an element for known data types
+                    Value::Data { .. } => Text::new(format!("Data")).into(),
                     Value::Array(_value) => todo!(),
-                }
+                };
+
+                Ok(val)
             }
-            _ => todo!(),
+            _ => unimplemented!("Unhandled markup node conversion"),
         }
     }
 }

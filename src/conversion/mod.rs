@@ -1,6 +1,7 @@
 mod alignment;
 mod column;
 mod container;
+mod data;
 mod element;
 mod row;
 mod stack;
@@ -8,10 +9,7 @@ mod text;
 pub(crate) mod theme;
 mod widget;
 
-use crate::{
-    error::{ConversionError, Error},
-    parser::{Attribute, Value},
-};
+use crate::{attribute::Attribute, error::ConversionError, parser::Value};
 
 /// Implements `TryInto` to convert a reference to `Value` into a reference to `String`.
 ///
@@ -122,27 +120,27 @@ impl TryInto<bool> for &Value {
 }
 
 impl TryInto<iced::Length> for &Value {
-    type Error = Error;
+    type Error = ConversionError;
 
     fn try_into(self) -> Result<iced::Length, Self::Error> {
         match self {
             Value::String(str) => match str.as_str() {
                 "fill" => Ok(iced::Length::Fill),
                 "shrink" => Ok(iced::Length::Shrink),
-                _ => Err(Error::Conversion(ConversionError::InvalidType(format!(
+                _ => Err(ConversionError::InvalidType(format!(
                     "Expecting fill or shrink"
-                )))),
+                ))),
             },
             Value::Number(num) => Ok((*num as f32).into()),
-            _ => Err(Error::Conversion(ConversionError::InvalidType(format!(
+            _ => Err(ConversionError::InvalidType(format!(
                 "Unsupported {self:?}"
-            )))),
+            ))),
         }
     }
 }
 
 impl TryInto<iced::Padding> for &Value {
-    type Error = Error;
+    type Error = ConversionError;
 
     fn try_into(self) -> Result<iced::Padding, Self::Error> {
         let val: f32 = self.try_into()?;
@@ -151,7 +149,7 @@ impl TryInto<iced::Padding> for &Value {
 }
 
 impl TryInto<iced::Pixels> for &Value {
-    type Error = Error;
+    type Error = ConversionError;
 
     fn try_into(self) -> Result<iced::Pixels, Self::Error> {
         let val: f32 = self.try_into()?;
@@ -174,7 +172,15 @@ impl TryInto<String> for &Value {
 }
 
 impl TryInto<iced::Length> for &Attribute {
-    type Error = Error;
+    type Error = ConversionError;
+
+    fn try_into(self) -> Result<iced::Length, Self::Error> {
+        (&*self.value()).try_into()
+    }
+}
+
+impl TryInto<iced::Length> for Attribute {
+    type Error = ConversionError;
 
     fn try_into(self) -> Result<iced::Length, Self::Error> {
         (&*self.value()).try_into()
@@ -182,7 +188,15 @@ impl TryInto<iced::Length> for &Attribute {
 }
 
 impl TryInto<iced::Pixels> for &Attribute {
-    type Error = Error;
+    type Error = ConversionError;
+
+    fn try_into(self) -> Result<iced::Pixels, Self::Error> {
+        (&*self.value()).try_into()
+    }
+}
+
+impl TryInto<iced::Pixels> for Attribute {
+    type Error = ConversionError;
 
     fn try_into(self) -> Result<iced::Pixels, Self::Error> {
         (&*self.value()).try_into()
@@ -197,7 +211,23 @@ impl TryInto<bool> for &Attribute {
     }
 }
 
+impl TryInto<bool> for Attribute {
+    type Error = ConversionError;
+
+    fn try_into(self) -> Result<bool, Self::Error> {
+        (&*self.value()).try_into()
+    }
+}
+
 impl TryInto<u16> for &Attribute {
+    type Error = ConversionError;
+
+    fn try_into(self) -> Result<u16, Self::Error> {
+        (&*self.value()).try_into()
+    }
+}
+
+impl TryInto<u16> for Attribute {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<u16, Self::Error> {

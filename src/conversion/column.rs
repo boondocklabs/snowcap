@@ -1,19 +1,19 @@
 use iced::{widget::Column, Element};
 
-use crate::{error::ConversionError, parser::Attributes, Error, MarkupTree, Message};
+use crate::{attribute::Attributes, error::ConversionError, parser::TreeNode, Message};
 
 pub struct SnowcapColumn;
 
 impl SnowcapColumn {
     pub fn convert<'a, SnowcapMessage, AppMessage>(
         attrs: &Attributes,
-        contents: &'a Vec<MarkupTree<AppMessage>>,
-    ) -> Result<Element<'a, SnowcapMessage>, Error>
+        contents: &'a Vec<TreeNode<AppMessage>>,
+    ) -> Result<Element<'a, SnowcapMessage>, ConversionError>
     where
         SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
         AppMessage: 'a + Clone + std::fmt::Debug,
     {
-        let children: Result<Vec<Element<'a, SnowcapMessage>>, Error> =
+        let children: Result<Vec<Element<'a, SnowcapMessage>>, ConversionError> =
             contents.into_iter().map(|item| item.try_into()).collect(); // Convert each item into Element
 
         let mut col = Column::with_children(children?);
@@ -23,23 +23,19 @@ impl SnowcapColumn {
                 "spacing" => todo!(),
                 "padding" => todo!(),
                 "width" => {
-                    let width: Result<iced::Length, Error> = (&*attr.value()).try_into();
+                    let width: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
                     col.width(width?)
                 }
                 "height" => {
-                    let height: Result<iced::Length, Error> = (&*attr.value()).try_into();
+                    let height: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
                     col.height(height?)
                 }
                 "align" => {
-                    let align: Result<iced::alignment::Horizontal, Error> =
+                    let align: Result<iced::alignment::Horizontal, ConversionError> =
                         (&*attr.value()).try_into();
                     col.align_x(align?)
                 }
-                _ => {
-                    return Err(Error::Conversion(ConversionError::UnsupportedAttribute(
-                        attr.name().clone(),
-                    )))
-                }
+                _ => return Err(ConversionError::UnsupportedAttribute(attr.name().clone())),
             }
         }
 

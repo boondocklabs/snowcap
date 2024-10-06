@@ -2,19 +2,24 @@
 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
+COMMENT           = _{ SingleLineComment }
+SingleLineComment =  { "//" ~ (!"\n" ~ ANY)* }
+
 container = {
-    "{" ~ ("<" ~ attributes ~ ">")? ~ (row | column | stack | element)? ~ "}"
+    "{" ~ ("<" ~ attributes ~ ">")? ~ (row | column | stack | widget)? ~ "}"
 }
 
-row    = { ("row" | "-") ~ ("<" ~ attributes ~ ">")? ~ element_list }
-column = { ("col" | "|") ~ ("<" ~ attributes ~ ">")? ~ element_list }
-stack  = { ("stack" | "^") ~ ("<" ~ attributes ~ ">")? ~ element_list }
+row    = { ("row" | "-") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
+column = { ("col" | "|") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
+stack  = { ("stack" | "^") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
 
-element_list = _{ "[" ~ (element | row | column | stack | container) ~ ("," ~ (element | row | column | stack | container))* ~ "]" }
+element_list = _{ "[" ~ (widget | row | column | stack | container) ~ ("," ~ (widget | row | column | stack | container))* ~ "]" }
 
-element    = { label ~ ("<" ~ attributes ~ ">")? ~ "(" ~ (element_value | element | container | row | column | stack | array)? ~ ")" }
+widget     = { label ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ "(" ~ (element_value | widget | container | row | column | stack | array)? ~ ")" }
 pair       = { label ~ ":" ~ value }
 attributes = { pair ~ ("," ~ pair)* }
+
+id = { "#" ~ label }
 
 element_value =  { value }
 value         = _{ string | number | boolean | null | data_source }
@@ -32,7 +37,6 @@ string = ${ "\"" ~ inner ~ "\"" }
 inner  = @{ char* }
 char   =  {
     !("\"" | "\\") ~ ANY
-  | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
   | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
 }
 

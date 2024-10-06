@@ -1,10 +1,6 @@
 use iced::widget::text::IntoFragment;
 
-use crate::{
-    data::DataProvider,
-    parser::{Attribute, Value},
-    MarkupTree,
-};
+use crate::{attribute::Attribute, parser::Value, MarkupTree};
 
 /// Converts a [`Value`] reference into a [`Cow<'a, str>`].
 ///
@@ -33,17 +29,12 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &Value {
             Value::String(s) => s.clone().into(),
             Value::Number(n) => format!("{n}").into(),
             Value::Boolean(b) => format!("{b}").into(),
-            Value::Null => format!("null").into(),
-            Value::DataSource {
-                name: _,
-                value: _,
-                provider,
-            } => match provider {
-                DataProvider::File(file_provider) => match file_provider.data() {
+            Value::Data { data, .. } => match &*data {
+                Some(data) => match &**data {
                     crate::data::DataType::Text(text) => text.clone().into(),
                     _ => "Unknown DataType".into(),
                 },
-                _ => "Unsupported DataProvider".into(),
+                None => format!("No Data Loaded").into(),
             },
             Value::Array(_value) => todo!(),
         }
@@ -70,7 +61,7 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &Value {
 impl<'a, AppMessage> IntoFragment<'a> for &MarkupTree<AppMessage> {
     fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
         match self {
-            MarkupTree::Value(value) => value.into(),
+            MarkupTree::Value(value) => (&*value.borrow()).into(),
             _ => "Expecting MarkupType::Value".into(),
         }
     }
@@ -80,16 +71,13 @@ impl<'a, AppMessage> IntoFragment<'a> for &MarkupTree<AppMessage> {
 ///
 /// This implementation extracts the value of the `Attribute` and converts it into
 /// an `iced::widget::text::Fragment`.
-///
-/// # Examples
-///
-/// ```rust
-/// use snowcap::{Attribute,Value};
-/// use iced::advanced::text::IntoFragment;
-/// let attr = Attribute { name: "test".into(), value: Value::String("Hello".to_string()) };
-/// let fragment: iced::widget::text::Fragment = (&attr).into_fragment();
-/// ```
 impl<'a> IntoFragment<'a> for &Attribute {
+    fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
+        (&*self.value()).into()
+    }
+}
+
+impl<'a> IntoFragment<'a> for Attribute {
     fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
         (&*self.value()).into()
     }
