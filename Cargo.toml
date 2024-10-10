@@ -10,7 +10,8 @@ readme = "README.md"
 
 [dependencies]
 file-format = { version = "0.25.0", features = ["reader-txt", "reader-xml"] }
-iced = { git = "https://github.com/boondocklabs/iced.git", branch = "qr-code-borrow", features = [
+#iced = { git = "https://github.com/boondocklabs/iced.git", branch = "qr-code-borrow", features = [
+iced = { path = "../iced", features = [
     "qr_code",
     "svg",
     "canvas",
@@ -31,6 +32,7 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 url = "2.5.2"
+xxhash-rust = { version = "0.8.12", features = ["xxh64"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 notify = "6.1.1"

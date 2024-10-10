@@ -1,26 +1,26 @@
+use std::any::type_name;
 use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use iced::Element;
-use parking_lot::{Mutex, RwLock, RwLockReadGuard};
+use parking_lot::Mutex;
 use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 use pest_derive::Parser;
-use tracing::{debug, error};
+use tracing::{debug, debug_span, error, warn};
 
 use crate::attribute::{Attribute, Attributes};
 use crate::data::provider::Provider;
 use crate::data::url_provider::UrlProvider;
 use crate::data::DataType;
-use crate::Message;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::FileProvider;
+use crate::message::{Event, WidgetMessage};
+use crate::tree::node::TreeNode;
 
 pub(crate) mod color;
 pub(crate) mod error;
@@ -28,26 +28,58 @@ pub(crate) mod gradient;
 
 use error::ParseError;
 
-static NEXT_NODE_ID: AtomicU64 = AtomicU64::new(0);
-
 #[derive(Parser)]
 #[grammar = "snowcap.pest"]
-pub struct SnowcapParser<AppMessage> {
-    _phantom: PhantomData<AppMessage>,
+pub struct SnowcapParser<'a, M> {
+    _phantom: PhantomData<&'a M>,
 }
 
-impl<AppMessage> SnowcapParser<AppMessage> {
-    pub fn parse_file(filename: &Path) -> Result<TreeNode<AppMessage>, crate::Error> {
+/// Snowcap parser
+///
+/// This parser uses Pest grammar to parse snowcap text into TreeNodes
+impl<'a, M> SnowcapParser<'a, M>
+where
+    M: Clone + std::fmt::Debug + From<Event> + From<WidgetMessage>,
+{
+    /// Parse a file into a `TreeNode`.
+    ///
+    /// # Arguments
+    ///
+    /// * `filename`: The path to the file containing Snowcap text.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the parsed `TreeNode`, or an error if parsing fails.
+    pub fn parse_file(filename: &Path) -> Result<TreeNode<'a, M>, crate::Error> {
         tracing::info!("Parsing file {filename:?}");
         let data = std::fs::read_to_string(filename).expect("cannot read file");
         SnowcapParser::parse_memory(data.as_str())
     }
 
-    pub fn parse_memory(data: &str) -> Result<TreeNode<AppMessage>, crate::Error> {
-        let markup = SnowcapParser::<AppMessage>::parse(Rule::markup, data)?
-            .next()
-            .unwrap();
-        Ok(TreeNode::new(SnowcapParser::parse_pair(markup)?))
+    /// Parse Snowcap string into a `TreeNode`.
+    ///
+    /// # Arguments
+    ///
+    /// * `data`: The Snowcap text to be parsed.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the root `TreeNode`, or an error if parsing fails.
+    pub fn parse_memory(data: &str) -> Result<TreeNode<'a, M>, crate::Error> {
+        debug_span!("parser").in_scope(|| {
+            let markup = SnowcapParser::<M>::parse(Rule::markup, data)?
+                .next()
+                .unwrap();
+            let nodes = SnowcapParser::parse_pair(markup)?;
+
+            debug!("Pairs parsed. Building tree.");
+
+            let root = TreeNode::<'a, M>::new(nodes);
+
+            debug!("Parsing complete");
+
+            Ok(root)
+        })
     }
 
     fn parse_attributes(pairs: Pairs<Rule>) -> Attributes {
@@ -74,6 +106,7 @@ impl<AppMessage> SnowcapParser<AppMessage> {
     }
 
     fn parse_value(pair: Pair<Rule>) -> Result<Value, ParseError> {
+        debug!("value {:?} {}", pair.as_rule(), pair.as_str());
         match pair.as_rule() {
             Rule::number => Ok(Value::Number(pair.as_str().parse().unwrap())),
             Rule::string => Ok(Value::String(pair.into_inner().as_str().into())),
@@ -123,28 +156,39 @@ impl<AppMessage> SnowcapParser<AppMessage> {
         }
     }
 
-    fn parse_container(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
-        debug!("[Parsing Container]");
-
+    fn parse_container(pair: Pair<Rule>) -> Result<MarkupTreeNode<'a, M>, ParseError> {
         let inner = pair.into_inner();
 
-        let mut content: MarkupTree<AppMessage> = MarkupTree::None;
+        let mut content: MarkupTreeNode<'a, M> = MarkupTreeNode::None;
         let mut attr = Attributes::default();
+        let mut id = None;
 
         for pair in inner {
+            debug!(
+                "{} {:#?} {}",
+                type_name::<Self>(),
+                pair.as_rule(),
+                pair.as_str()
+            );
             match pair.as_rule() {
+                Rule::id => {
+                    let container_id = pair.into_inner().as_str();
+                    tracing::info!("Element List ID {container_id}");
+                    id = Some(container_id.to_string());
+                }
                 Rule::row | Rule::column | Rule::widget | Rule::stack => {
                     content = Self::parse_pair(pair)?;
                 }
                 Rule::attributes => {
                     attr = Self::parse_attributes(pair.into_inner());
-                    debug!("{attr:?}");
+                    debug!("Container attributes {attr:?}");
                 }
                 _ => return Err(ParseError::UnsupportedRule(format!("{:?}", pair.as_rule()))),
             };
         }
 
-        Ok(MarkupTree::Container {
+        Ok(MarkupTreeNode::Container {
+            element_id: id,
             content: TreeNode::new(content),
             attrs: attr,
         })
@@ -152,7 +196,7 @@ impl<AppMessage> SnowcapParser<AppMessage> {
 
     fn parse_element_list(
         pairs: Pairs<Rule>,
-    ) -> Result<(ElementIdOption, Attributes, Vec<TreeNode<AppMessage>>), ParseError> {
+    ) -> Result<(ElementIdOption, Attributes, Vec<TreeNode<'a, M>>), ParseError> {
         let mut contents = Vec::new();
         let mut attrs = Attributes::default();
         let mut id: Option<String> = None;
@@ -174,45 +218,46 @@ impl<AppMessage> SnowcapParser<AppMessage> {
         Ok((id, attrs, contents))
     }
 
-    fn parse_row(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
+    fn parse_row(pair: Pair<Rule>) -> Result<MarkupTreeNode<'a, M>, ParseError> {
         let (id, attrs, contents) = Self::parse_element_list(pair.into_inner())?;
 
-        Ok(MarkupTree::Row {
+        Ok(MarkupTreeNode::Row {
             element_id: id,
             attrs,
             contents: Arc::new(contents),
         })
     }
 
-    fn parse_column(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
+    fn parse_column(pair: Pair<Rule>) -> Result<MarkupTreeNode<'a, M>, ParseError> {
         let (id, attrs, contents) = Self::parse_element_list(pair.into_inner())?;
 
-        Ok(MarkupTree::Column {
+        Ok(MarkupTreeNode::Column {
             element_id: id,
             attrs,
             contents: Arc::new(contents),
         })
     }
 
-    fn parse_stack(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
+    fn parse_stack(pair: Pair<Rule>) -> Result<MarkupTreeNode<'a, M>, ParseError> {
         let (id, attrs, contents) = Self::parse_element_list(pair.into_inner())?;
 
-        Ok(MarkupTree::Stack {
+        Ok(MarkupTreeNode::Stack {
             element_id: id,
             attrs,
             contents: Arc::new(contents),
         })
     }
 
-    fn parse_widget(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
+    fn parse_widget(pair: Pair<Rule>) -> Result<MarkupTreeNode<'a, M>, ParseError> {
         let mut inner = pair.into_inner();
         let label = inner.next().unwrap().as_str().to_string();
 
         let mut attr = Attributes::default();
-        let mut value = MarkupTree::None;
+        let mut value = MarkupTreeNode::None;
         let mut id: ElementIdOption = None;
 
         for pair in inner {
+            debug!("widget {:?} {}", pair.as_rule(), pair.as_str());
             match pair.as_rule() {
                 Rule::id => {
                     let widget_id = pair.into_inner().as_str();
@@ -224,7 +269,7 @@ impl<AppMessage> SnowcapParser<AppMessage> {
                 }
                 Rule::element_value => {
                     let val = Self::parse_value(pair.into_inner().next().unwrap());
-                    value = MarkupTree::Value(Arc::new(RefCell::new(val.unwrap())));
+                    value = MarkupTreeNode::Value(Arc::new(RefCell::new(val.unwrap())));
                 }
                 Rule::widget => {
                     value = Self::parse_pair(pair)?;
@@ -234,7 +279,7 @@ impl<AppMessage> SnowcapParser<AppMessage> {
                 }
                 Rule::array => {
                     let val = Self::parse_array(pair);
-                    value = MarkupTree::Value(Arc::new(RefCell::new(val.unwrap())));
+                    value = MarkupTreeNode::Value(Arc::new(RefCell::new(val.unwrap())));
                 }
                 _ => {
                     error!("Unhandled element rule {:?}", pair.as_rule())
@@ -242,7 +287,7 @@ impl<AppMessage> SnowcapParser<AppMessage> {
             }
         }
 
-        Ok(MarkupTree::Widget {
+        Ok(MarkupTreeNode::Widget {
             element_id: id,
             name: label,
             attrs: attr,
@@ -250,7 +295,8 @@ impl<AppMessage> SnowcapParser<AppMessage> {
         })
     }
 
-    pub(crate) fn parse_pair(pair: Pair<Rule>) -> Result<MarkupTree<AppMessage>, ParseError> {
+    pub(crate) fn parse_pair(pair: Pair<Rule>) -> Result<MarkupTreeNode<'a, M>, ParseError> {
+        debug!("{:?} {:?}", pair.as_rule(), pair.as_str());
         match pair.as_rule() {
             Rule::container => Self::parse_container(pair),
             Rule::row => Self::parse_row(pair),
@@ -258,7 +304,7 @@ impl<AppMessage> SnowcapParser<AppMessage> {
             Rule::stack => Self::parse_stack(pair),
             Rule::widget => Self::parse_widget(pair),
             Rule::element_value => Self::parse_pair(pair.into_inner().last().unwrap()),
-            Rule::label => Ok(MarkupTree::Label(
+            Rule::label => Ok(MarkupTreeNode::Label(
                 pair.into_inner().next().unwrap().as_str().into(),
             )),
             _ => panic!("Unhandled {pair:?}"),
@@ -325,158 +371,86 @@ impl Borrow<String> for Value {
     }
 }
 
-pub type NodeId = u64;
-
-/// Type alias for inner tree nodes wrapped in Arc
-pub type TreeNodeInner<M> = Arc<MarkupTree<M>>;
-
-pub struct TreeNode<AppMessage> {
-    id: NodeId,
-    inner: TreeNodeInner<AppMessage>,
-    pub element: Arc<RwLock<Option<Arc<Element<'static, Message<AppMessage>>>>>>,
-    pub data: Arc<RwLock<Option<DataType>>>,
-}
-
-impl<AppMessage> std::fmt::Debug for TreeNode<AppMessage> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("TreeNode ID={}", self.id))
-    }
-}
-
-impl<M> Clone for TreeNode<M> {
-    fn clone(&self) -> Self {
-        TreeNode {
-            id: self.id,
-            inner: self.inner.clone(),
-            element: Arc::new(RwLock::new(None)),
-            data: Arc::new(RwLock::new(None)),
-        }
-    }
-}
-
-impl<AppMessage> TreeNode<AppMessage> {
-    pub fn new(inner: MarkupTree<AppMessage>) -> Self {
-        Self {
-            id: NEXT_NODE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-            inner: Arc::new(inner),
-            element: Arc::new(RwLock::new(None)),
-            data: Arc::new(RwLock::new(None)),
-        }
-    }
-
-    pub fn element_read(
-        &self,
-    ) -> RwLockReadGuard<Option<Arc<Element<'static, Message<AppMessage>>>>> {
-        self.element.read()
-    }
-
-    pub fn inner<'a>(&'a self) -> &MarkupTree<AppMessage> {
-        &self.inner
-    }
-
-    pub fn id(&self) -> NodeId {
-        self.id
-    }
-
-    pub fn element_id(&self) -> &Option<ElementId> {
-        match self.inner() {
-            MarkupTree::Container {
-                attrs: _,
-                content: _,
-            } => &None,
-            MarkupTree::Widget { element_id: id, .. } => id,
-            MarkupTree::Row { element_id: id, .. } => id,
-            MarkupTree::Column { element_id: id, .. } => id,
-            MarkupTree::Stack { element_id: id, .. } => id,
-            _ => &None,
-        }
-    }
-}
-
 pub type ElementId = String;
 type ElementIdOption = Option<ElementId>;
 
 /// Abstract Syntax Tree (AST) representation of the parsed grammar
-#[derive(Debug)]
-pub enum MarkupTree<AppMessage> {
+#[derive(Debug, Clone)]
+pub enum MarkupTreeNode<'a, M>
+where
+    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+{
     None,
     Container {
+        element_id: ElementIdOption,
         attrs: Attributes,
-        content: TreeNode<AppMessage>,
+        content: TreeNode<'a, M>,
     },
     Widget {
         element_id: ElementIdOption,
         name: String,
         attrs: Attributes,
-        content: TreeNode<AppMessage>,
+        content: TreeNode<'a, M>,
     },
     Row {
         element_id: ElementIdOption,
         attrs: Attributes,
-        contents: Arc<Vec<TreeNode<AppMessage>>>,
+        contents: Arc<Vec<TreeNode<'a, M>>>,
     },
     Column {
         element_id: ElementIdOption,
         attrs: Attributes,
-        contents: Arc<Vec<TreeNode<AppMessage>>>,
+        contents: Arc<Vec<TreeNode<'a, M>>>,
     },
     Stack {
         element_id: ElementIdOption,
         attrs: Attributes,
-        contents: Arc<Vec<TreeNode<AppMessage>>>,
+        contents: Arc<Vec<TreeNode<'a, M>>>,
     },
     Label(String),
     Value(Arc<RefCell<Value>>),
-    Phantom(PhantomData<AppMessage>),
+    Phantom(PhantomData<M>),
 }
 
-impl<AppMessage> TreeNode<AppMessage> {
-    // Define an `into_iter` method that returns an iterator over Arc-wrapped nodes
-    pub fn into_iter(self) -> MarkupTreeIter<AppMessage> {
-        MarkupTreeIter {
-            stack: VecDeque::from([self.into()]), // Start with the root node in Arc
-        }
-    }
-}
-
-impl<AppMessage> IntoIterator for TreeNode<AppMessage> {
-    type Item = TreeNode<AppMessage>;
-    type IntoIter = MarkupTreeIter<AppMessage>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        MarkupTreeIter {
-            stack: VecDeque::from([self]),
-        }
-    }
-}
-
-pub struct MarkupTreeIter<AppMessage> {
-    stack: VecDeque<TreeNode<AppMessage>>,
-}
-
-impl<AppMessage> Iterator for MarkupTreeIter<AppMessage> {
-    type Item = TreeNode<AppMessage>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let current = self.stack.pop_front();
-
-        if let Some(tree) = current.clone() {
-            match &*tree.inner {
-                MarkupTree::Container { content, .. } | MarkupTree::Widget { content, .. } => {
-                    self.stack.push_front(content.clone());
-                }
-                MarkupTree::Row { contents, .. }
-                | MarkupTree::Column { contents, .. }
-                | MarkupTree::Stack { contents, .. } => {
-                    for content in contents.iter().rev() {
-                        self.stack.push_front(content.clone());
-                    }
-                }
-                _ => {}
+impl<'a, M> MarkupTreeNode<'a, M>
+where
+    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    pub fn get_element_id(&self) -> &ElementIdOption {
+        match self {
+            MarkupTreeNode::Container { element_id, .. } => element_id,
+            MarkupTreeNode::Widget { element_id, .. } => element_id,
+            MarkupTreeNode::Row { element_id, .. } => element_id,
+            MarkupTreeNode::Column { element_id, .. } => element_id,
+            MarkupTreeNode::Stack { element_id, .. } => element_id,
+            _ => {
+                warn!("Get element ID node on node type without element_id");
+                &None
             }
         }
+    }
+    pub fn set_element_id(&mut self, new_element_id: ElementIdOption) {
+        match self {
+            MarkupTreeNode::Container { element_id, .. } => *element_id = new_element_id,
+            MarkupTreeNode::Widget { element_id, .. } => *element_id = new_element_id,
+            MarkupTreeNode::Row { element_id, .. } => *element_id = new_element_id,
+            MarkupTreeNode::Column { element_id, .. } => *element_id = new_element_id,
+            MarkupTreeNode::Stack { element_id, .. } => *element_id = new_element_id,
+            _ => warn!("Set element ID node on node type without element_id"),
+        }
+    }
 
-        current
+    pub fn get_content(&'a self) -> Option<TreeNode<M>>
+    where
+        M: Clone + std::fmt::Debug,
+    {
+        match self {
+            MarkupTreeNode::Widget { content, .. } => Some(content.clone()),
+            _ => {
+                warn!("No content for widget");
+                None
+            }
+        }
     }
 }
 

@@ -1,20 +1,37 @@
+use std::sync::Arc;
+
 use iced::{widget::Column, Element};
 
-use crate::{attribute::Attributes, error::ConversionError, parser::TreeNode, Message};
+use crate::{
+    attribute::Attributes, error::ConversionError, message::WidgetMessage, tree::node::TreeNode,
+};
 
-pub struct SnowcapColumn;
+use super::widget::SnowcapWidget;
 
-impl SnowcapColumn {
-    pub fn convert<'a, SnowcapMessage, AppMessage>(
-        attrs: &Attributes,
-        contents: &'a Vec<TreeNode<AppMessage>>,
-    ) -> Result<Element<'a, SnowcapMessage>, ConversionError>
+pub struct SnowcapColumn<'a, M>
+where
+    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    contents: Arc<Vec<TreeNode<'a, M>>>,
+    column: Column<'a, M>,
+}
+
+impl<'a, M> SnowcapColumn<'a, M>
+where
+    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    pub fn convert(
+        attrs: Attributes,
+        contents: Arc<Vec<TreeNode<'a, M>>>,
+    ) -> Result<Column<'a, M>, ConversionError>
     where
-        SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: 'a + Clone + std::fmt::Debug,
+        //SnowcapMessage: Clone + From<Message<AppMessage>> + 'static,
+        M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
     {
-        let children: Result<Vec<Element<'a, SnowcapMessage>>, ConversionError> =
-            contents.into_iter().map(|item| item.try_into()).collect(); // Convert each item into Element
+        let children: Result<Vec<Element<'a, M>>, ConversionError> = (**contents)
+            .iter()
+            .map(|item| item.clone().into_element())
+            .collect(); // Convert each item into Element
 
         let mut col = Column::with_children(children?);
 
@@ -39,6 +56,6 @@ impl SnowcapColumn {
             }
         }
 
-        Ok(col.into())
+        Ok(col)
     }
 }

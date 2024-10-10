@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use iced::{Element, Task, Theme};
 use snowcap::Snowcap;
 use tracing_subscriber::{self, EnvFilter};
@@ -26,7 +28,7 @@ pub fn main() -> iced::Result {
 struct SnowcapViewer {
     filename: String,
     parse_error: Option<snowcap::Error>,
-    snow: Option<Snowcap<Message>>,
+    snow: Option<Snowcap<'static, Message>>,
 }
 
 impl SnowcapViewer {

@@ -3,11 +3,12 @@ mod column;
 mod container;
 mod data;
 mod element;
+pub(crate) mod node;
 mod row;
 mod stack;
 mod text;
 pub(crate) mod theme;
-mod widget;
+pub(crate) mod widget;
 
 use crate::{attribute::Attribute, error::ConversionError, parser::Value};
 

@@ -1,6 +1,9 @@
 use iced::widget::text::IntoFragment;
 
-use crate::{attribute::Attribute, parser::Value, MarkupTree};
+use crate::{
+    attribute::Attribute, message::WidgetMessage, parser::Value, tree::node::NodeRef,
+    MarkupTreeNode,
+};
 
 /// Converts a [`Value`] reference into a [`Cow<'a, str>`].
 ///
@@ -53,15 +56,32 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &Value {
 /// enum AppMessage {
 ///     None
 /// };
+/// use std::sync::Arc;
+/// use std::cell::RefCell;
 /// use snowcap::{MarkupTree,Value};
 /// use iced::advanced::text::IntoFragment;
-/// let markup_tree = MarkupTree::<AppMessage>::Value(Value::String("Hello".to_string()));
+/// let markup_tree = MarkupTree::<AppMessage>::Value(Arc::new(RefCell::new(Value::String("Hello".to_string()))));
 /// let fragment: iced::widget::text::Fragment = (&markup_tree).into_fragment();
 /// ```
-impl<'a, AppMessage> IntoFragment<'a> for &MarkupTree<AppMessage> {
+impl<'a, AppMessage> IntoFragment<'a> for MarkupTreeNode<'a, AppMessage>
+where
+    AppMessage: std::fmt::Debug + From<WidgetMessage> + 'a,
+{
     fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
         match self {
-            MarkupTree::Value(value) => (&*value.borrow()).into(),
+            MarkupTreeNode::Value(value) => (&*value.borrow()).into(),
+            _ => "Expecting MarkupType::Value".into(),
+        }
+    }
+}
+
+impl<'a, AppMessage> IntoFragment<'a> for NodeRef<'a, AppMessage>
+where
+    AppMessage: std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
+        match &*self {
+            MarkupTreeNode::Value(value) => (&*value.borrow()).into(),
             _ => "Expecting MarkupType::Value".into(),
         }
     }

@@ -1,26 +1,43 @@
-use iced::{widget::Container, Background, Element};
+use std::sync::Arc;
+
+use iced::{widget::Container, Background};
 
 use crate::{
     attribute::Attributes,
     error::ConversionError,
-    parser::{color::ColorParser, gradient::GradientParser, TreeNode},
-    Message, Value,
+    message::WidgetMessage,
+    parser::{color::ColorParser, gradient::GradientParser},
+    tree::node::TreeNode,
+    Value,
 };
 
-pub struct SnowcapContainer;
+use super::widget::SnowcapWidget;
 
-impl SnowcapContainer {
-    pub fn convert<'a, SnowcapMessage, AppMessage>(
-        attrs: &Attributes,
-        content: &'a TreeNode<AppMessage>,
-    ) -> Result<Element<'a, SnowcapMessage>, ConversionError>
+pub struct SnowcapContainer<'a, M>
+where
+    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    container: Container<'a, M>,
+    content: TreeNode<'a, M>,
+}
+
+impl<'a, M> SnowcapContainer<'a, M>
+where
+    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    pub fn new(
+        attrs: Attributes,
+        content: TreeNode<'a, M>,
+    ) -> Result<Container<'a, M>, ConversionError>
     where
-        SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: 'a + Clone + std::fmt::Debug,
+        M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
     {
-        let content: Element<'a, SnowcapMessage> = content.try_into()?;
+        let widget = SnowcapWidget::from_node(content.inner.borrow().clone())?;
+        let mut content = content.clone();
 
-        let mut container = Container::new(content);
+        widget.map(|w| content.set_widget(w));
+
+        let mut container = Container::new(content.into_element()?);
 
         let mut style = iced::widget::container::Style::default();
 
@@ -87,6 +104,6 @@ impl SnowcapContainer {
 
         container = container.style(move |_theme| style);
 
-        Ok(container.into())
+        Ok(container)
     }
 }

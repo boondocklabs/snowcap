@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{connector::Inlet, message::Event, parser::NodeId};
+use crate::{connector::Inlet, message::Event, tree::node::NodeId};
 use iced::{
     advanced::graphics::futures::{MaybeSend, MaybeSync},
     Task,

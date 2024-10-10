@@ -3,19 +3,19 @@ use std::sync::Arc;
 use crate::attribute::Attributes;
 use crate::data::DataType;
 use crate::error::ConversionError;
-use crate::message::Message;
-use iced::widget::markdown::{Settings, Style};
-use iced::widget::{Image, QRCode, Svg, Text};
-use iced::{Element, Theme};
+use iced::{
+    advanced::Widget,
+    widget::{Image, QRCode, Svg, Text},
+};
 
 impl DataType {
-    pub fn to_widget<'a, SnowcapMessage, AppMessage>(
+    pub fn to_widget<'a, M>(
         data_arc: Arc<DataType>,
-        attrs: &'a Attributes,
-    ) -> Result<Element<'a, SnowcapMessage>, ConversionError>
+        attrs: Attributes,
+        //) -> Result<Element<'a, SnowcapMessage>, ConversionError>
+    ) -> Result<Box<dyn Widget<M, iced::Theme, iced::Renderer>>, ConversionError>
     where
-        SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: 'a + Clone + std::fmt::Debug,
+        M: Clone + std::fmt::Debug + 'a,
     {
         match &*data_arc {
             DataType::Null => panic!("Null DataType"),
@@ -39,10 +39,10 @@ impl DataType {
                     };
                 }
 
-                Ok(text.into())
+                return Ok(Box::new(text));
             }
-            DataType::Image(handle) => Ok(Image::new(handle).into()),
-            DataType::Svg(handle) => Ok(Svg::new(handle.clone()).into()),
+            DataType::Image(handle) => return Ok(Box::new(Image::new(handle))),
+            DataType::Svg(handle) => return Ok(Box::new(Svg::new(handle.clone()))),
             DataType::QrCode(data) => {
                 let mut qr = QRCode::new(data.clone());
                 for attr in attrs {
@@ -55,41 +55,19 @@ impl DataType {
                     };
                 }
 
-                Ok(qr.into())
+                return Ok(Box::new(qr));
             }
-            DataType::Markdown(markdown_items) => Ok(iced::widget::markdown(
-                markdown_items.into_iter(),
-                Settings::default(),
-                Style::from_palette(Theme::default().palette()),
-            )
-            .map(|url| SnowcapMessage::from(Message::Markdown(url)))
-            .into()),
+            DataType::Markdown(_markdown_items) => {
+                return Ok(Box::new(Text::new("todo")));
+                /*
+                return Ok(iced::widget::markdown(
+                    markdown_items.into_iter(),
+                    Settings::default(),
+                    Style::from_palette(Theme::default().palette()),
+                )
+                .map(|url| SnowcapMessage::from(Message::Markdown(url))))
+                */
+            }
         }
     }
 }
-
-/*
-impl<'a, SnowcapMessage> TryInto<Element<'a, SnowcapMessage>> for &'a DataType
-where
-    SnowcapMessage: 'a + Clone,
-{
-    type Error = ConversionError;
-
-    fn try_into(self) -> Result<Element<'a, SnowcapMessage>, Self::Error> {
-        match self {
-            DataType::Null => panic!("Null DataType"),
-            DataType::Image(handle) => Ok(Image::new(handle).into()),
-            DataType::Svg(handle) => Ok(Svg::new(handle.clone()).into()),
-            DataType::QrCode(data) => Ok(QRCode::new(data).into()),
-            DataType::Markdown(markdown_items) => Ok(iced::widget::markdown(
-                markdown_items.into_iter(),
-                Settings::default(),
-                Style::from_palette(Theme::default().palette()),
-            )
-            .map(|url| Message::Markdown(url))
-            .into()),
-            DataType::Text(_) => todo!(),
-        }
-    }
-}
-*/

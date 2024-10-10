@@ -4,11 +4,7 @@ use super::{
     provider::{Provider, ProviderEvent},
     FileData,
 };
-use crate::{
-    connector::Inlet,
-    message::Event,
-    parser::{error::ParseError, NodeId},
-};
+use crate::{connector::Inlet, message::Event, parser::error::ParseError, tree::node::NodeId};
 use iced::Task;
 use parking_lot::Mutex;
 use reqwest::header::CONTENT_TYPE;

@@ -3,7 +3,8 @@ use std::string::FromUtf8Error;
 use thiserror::Error;
 
 use crate::parser::error::ParseError;
-use crate::parser::{NodeId, Rule};
+use crate::parser::Rule;
+use crate::tree::node::NodeId;
 
 #[derive(Error, Debug)]
 pub enum ConversionError {

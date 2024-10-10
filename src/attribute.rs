@@ -5,7 +5,7 @@ use std::{
 
 use crate::Value;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Attributes(Arc<RefCell<Vec<Attribute>>>);
 
 impl Attributes {

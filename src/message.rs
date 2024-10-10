@@ -11,7 +11,7 @@ use crate::{
 /// Represents a message that can be passed within the application.
 /// This enum encapsulates both application-specific messages and other events.
 #[derive(Debug, Clone)]
-pub enum Message<AppMessage = Event> {
+pub enum Message<AppMessage> {
     // Provide a default empty state, to allow std::mem::take()
     // to take ownership of a variant
     Empty,
@@ -20,9 +20,16 @@ pub enum Message<AppMessage = Event> {
     ///
     /// # Type Parameters
     ///
-    /// * `A` - The type of the application-specific message.
+    /// * `AppMessage` - The type of the application-specific message.
     App(AppMessage),
 
+    Widget(WidgetMessage),
+
+    Event(Event),
+}
+
+#[derive(Debug, Clone)]
+pub enum WidgetMessage {
     /// A message variant for handling markdown-related events.
     ///
     /// This is used when an event related to markdown content
@@ -43,13 +50,23 @@ pub enum Message<AppMessage = Event> {
         id: Option<ElementId>,
         selected: String,
     },
-
-    Event(Event),
 }
 
 impl<AppMessage> Default for Message<AppMessage> {
     fn default() -> Self {
         Message::Empty
+    }
+}
+
+impl<AppMessage> From<Event> for Message<AppMessage> {
+    fn from(event: Event) -> Self {
+        Message::Event(event)
+    }
+}
+
+impl<AppMessage> From<WidgetMessage> for Message<AppMessage> {
+    fn from(m: WidgetMessage) -> Self {
+        Message::Widget(m)
     }
 }
 

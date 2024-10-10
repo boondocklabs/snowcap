@@ -4,8 +4,10 @@ mod conversion;
 mod data;
 mod error;
 mod message;
-mod node;
+mod node_manager;
 mod parser;
+mod tree;
+mod widget;
 
 use connector::{Endpoint, Inlet};
 use data::provider::Provider;
@@ -15,10 +17,11 @@ use data::MarkdownItems;
 pub use iced;
 use iced::advanced::graphics::futures::MaybeSend;
 use message::Event;
-use node::NodeManager;
+use message::WidgetMessage;
+use node_manager::NodeManager;
 use parking_lot::Mutex;
-use parser::TreeNode;
 use tracing::warn;
+use tree::node::TreeNode;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -38,7 +41,7 @@ use notify::RecommendedWatcher;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::Watcher;
 
-pub use parser::MarkupTree;
+pub use parser::MarkupTreeNode;
 pub use parser::SnowcapParser;
 pub use parser::Value;
 
@@ -47,12 +50,15 @@ use tracing::error;
 use tracing::info;
 
 #[derive(Debug)]
-pub struct Snowcap<AppMessage> {
+pub struct Snowcap<'a, AppMessage>
+where
+    AppMessage: std::fmt::Debug + 'static,
+{
     #[cfg(not(target_arch = "wasm32"))]
     filename: Option<PathBuf>,
 
-    node_manager: NodeManager<AppMessage>,
-    tree: Option<TreeNode<AppMessage>>,
+    node_manager: NodeManager<'a, Message<AppMessage>>,
+    tree: Option<TreeNode<'a, Message<AppMessage>>>,
 
     #[cfg(not(target_arch = "wasm32"))]
     watcher: FsEventWatcher,
@@ -61,24 +67,49 @@ pub struct Snowcap<AppMessage> {
     //event_rx: Option<UnboundedReceiver<Event>>,
     event_endpoint: Endpoint<Event>,
 
-    provider_map: HashMap<PathBuf, Arc<Mutex<dyn Provider + 'static>>>,
+    provider_map: HashMap<PathBuf, Arc<Mutex<dyn Provider + 'a>>>,
 }
 
-impl<AppMessage> Snowcap<AppMessage>
+impl<'a, AppMessage> Snowcap<'a, AppMessage>
 where
-    AppMessage: Clone + MaybeSend + std::fmt::Debug + 'static,
+    AppMessage: Clone + MaybeSend + std::fmt::Debug + 'a,
 {
-    pub fn watch_tree_files(&mut self) {
+    pub fn watch_tree_files(&mut self) -> Result<(), Error> {
         self.provider_map.clear();
 
         info!("Walking tree and adding files to watcher");
 
-        for node in self.tree.as_ref().unwrap().clone() {
-            if let MarkupTree::Value(value) = node.inner() {
+        for node in self.tree.as_ref().unwrap() {
+            /*
+            let widget = match node.inner().clone() {
+                MarkupTreeNode::Widget {
+                    element_id: _,
+                    name,
+                    attrs,
+                    content,
+                } => {
+                    info!("ADDING WIDGET TO TREE NODE");
+
+                    let widget =
+                        SnowcapWidget::<Message<AppMessage>>::from_tree_node(name, attrs, content)?;
+                    //node.set_widget(widget?);
+                    Some(widget)
+                }
+                _ => None,
+            };
+
+            if let Some(widget) = widget {
+                node.set_widget(widget);
+            }
+            */
+
+            //let widget = node.as_widget().unwrap();
+
+            if let MarkupTreeNode::Value(value) = &*node.inner_ref() {
                 if let Value::Data {
                     provider: Some(provider),
                     ..
-                } = &*value.borrow()
+                } = &*(**value).borrow()
                 {
                     // Provide an event sender to this Provider
                     provider
@@ -103,17 +134,19 @@ where
                 }
             }
         }
+
+        Ok(())
     }
 
     pub fn get_provider_tasks(&self) -> Vec<Task<Message<AppMessage>>> {
         let mut tasks: Vec<Task<Message<AppMessage>>> = Vec::new();
 
-        for node in self.tree.as_ref().unwrap().clone() {
-            if let MarkupTree::Value(value) = node.inner() {
+        for node in self.tree.as_ref().unwrap() {
+            if let MarkupTreeNode::Value(value) = &*node.inner_ref() {
                 if let Value::Data {
                     provider: Some(provider),
                     ..
-                } = &*value.borrow()
+                } = &*(**value).borrow()
                 {
                     tasks.push(
                         provider
@@ -181,8 +214,12 @@ where
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn load_file(&mut self, filename: String) -> Result<(), Error> {
+        use std::process::exit;
+
         let filename = &PathBuf::from(&filename);
-        let tree = SnowcapParser::parse_file(&filename)?;
+        let tree = SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?;
+
+        exit(0);
 
         self.filename = Some(filename.clone());
 
@@ -190,23 +227,16 @@ where
         self.watcher
             .watch(filename, notify::RecursiveMode::NonRecursive)?;
 
-        // Build a NodeManager from the AST.
-        // This maps any explicitly defined NodeId's from the markup to TreeNode references
-        self.node_manager = NodeManager::from_tree(tree.clone())?;
-
-        self.tree = Some(tree);
+        self.set_tree(tree)?;
 
         // Register any files referenced by the markup with the watcher
-        self.watch_tree_files();
+        self.watch_tree_files()?;
 
         Ok(())
     }
 
     pub fn load_memory(&mut self, data: &str) -> Result<(), Error> {
-        let tree = SnowcapParser::parse_memory(data)?;
-        self.node_manager = NodeManager::from_tree(tree.clone())?;
-
-        self.tree = Some(tree);
+        self.set_tree(SnowcapParser::<Message<AppMessage>>::parse_memory(data)?)?;
         Ok(())
     }
 
@@ -216,8 +246,15 @@ where
         Ok(snow)
     }
 
-    pub fn root(&self) -> TreeNode<AppMessage> {
-        self.tree.as_ref().unwrap().clone()
+    fn set_tree(&mut self, tree: TreeNode<'a, Message<AppMessage>>) -> Result<(), Error> {
+        self.tree = Some(tree);
+        self.node_manager
+            .update_from_tree(&self.tree.as_ref().unwrap())?;
+        Ok(())
+    }
+
+    pub fn root(&self) -> &'a TreeNode<Message<AppMessage>> {
+        self.tree.as_ref().unwrap()
     }
 
     // Initial tasks to be executed in parallel by the iced Runtime
@@ -229,12 +266,14 @@ where
         tasks.append(&mut provider_tasks);
 
         // Start the event listener task
+        /*
         tasks.push(Task::run(self.event_endpoint.take_outlet(), |ep_message| {
             //tracing::info_span!("forwarder").in_scope(|| {
             info!("Received event from inlet {}", ep_message.from());
             Message::<AppMessage>::Event(ep_message.into_inner())
             //})
         }));
+        */
 
         tasks.push(Task::perform(async { true }, |_event| {
             Message::Event(Event::Debug("Sending...".to_string()))
@@ -250,12 +289,8 @@ where
         let filename = self.filename.clone().ok_or(Error::MissingAttribute(
             "No snowcap grammar filename in self".to_string(),
         ))?;
-        let tree = SnowcapParser::parse_file(&filename)?;
-        self.node_manager = NodeManager::from_tree(tree.clone())?;
-        self.tree = Some(tree);
-
+        self.set_tree(SnowcapParser::parse_file(&filename)?)?;
         self.watch_tree_files();
-
         Ok(())
     }
 
@@ -303,9 +338,10 @@ where
                     data::provider::ProviderEvent::Updated => todo!(),
                     data::provider::ProviderEvent::FileLoaded { node_id, data } => {
                         info!("File Loaded. Node ID: {node_id} {data:?}");
-                        match self.node_manager.get_node(&node_id) {
+
+                        match self.node_manager.get_node(node_id) {
                             Ok(node) => {
-                                if let MarkupTree::Value(value) = node.inner() {
+                                if let MarkupTreeNode::Value(value) = &*(*node.inner).borrow() {
                                     match data {
                                         FileData::Svg(handle) => {
                                             let mut val = value.borrow_mut();
@@ -349,14 +385,16 @@ where
                                     }
                                 }
                             }
-                            Err(_) => todo!(),
+                            Err(e) => {
+                                error!("Provider event error {e:?}")
+                            }
                         }
                     }
                     data::provider::ProviderEvent::UrlLoaded { node_id, url, data } => {
                         info!("URL Loaded {url:?} {data:?}");
-                        match self.node_manager.get_node(&node_id) {
+                        match &self.node_manager.get_node(node_id) {
                             Ok(node) => {
-                                if let MarkupTree::Value(value) = node.inner() {
+                                if let MarkupTreeNode::Value(value) = &*(*node.inner).borrow() {
                                     match data {
                                         data::FileData::Text(text) => {
                                             match &mut *value.borrow_mut() {
@@ -418,19 +456,19 @@ where
                 //f(&app_message)
                 Task::none()
             }
-            Message::Markdown(url) => {
+            Message::Widget(WidgetMessage::Markdown(url)) => {
                 info!("Markdown URL click {url}");
                 Task::none()
             }
-            Message::Button(id) => {
+            Message::Widget(WidgetMessage::Button(id)) => {
                 info!("Button clicked node={id:?}");
                 Task::none()
             }
-            Message::Toggler { id, toggled } => {
+            Message::Widget(WidgetMessage::Toggler { id, toggled }) => {
                 info!("Toggler node={id:?} toggled={toggled}");
                 Task::none()
             }
-            Message::PickListSelected { id, selected } => {
+            Message::Widget(WidgetMessage::PickListSelected { id, selected }) => {
                 info!("Picklist selected node={id:?} selected={selected}");
                 Task::none()
             }
@@ -448,20 +486,37 @@ where
     pub fn view(&self) -> iced::Element<Message<AppMessage>> {
         info!("View");
 
-        if let Some(root) = &self.tree {
-            let guard = root.element_read();
-            if let Some(_element) = &*guard {
-                //let w = element.as_widget();
-                //return iced::Element::new(*element.as_widget());
+        /*
+        for _node in self.tree.as_ref().unwrap() {
+            /*
+            match &node.inner() {
+                MarkupTreeNode::Widget {
+                    element_id,
+                    name,
+                    attrs,
+                    content,
+                } => todo!(),
             }
+            */
+            //info!("NODE {:#?}", node);
         }
+        */
 
-        match self.tree.as_ref().unwrap().try_into() {
-            Ok(content) => content,
-            Err(e) => {
-                error!("{e:?}");
-                iced::widget::text(format!("{e:?}")).into()
+        iced::widget::Text::new("Nothing").into()
+
+        /*
+        if let Some(tree) = &self.tree {
+            match tree.try_into() {
+                Ok(content) => content,
+                Err(e) => {
+                    error!("{e:?}");
+                    iced::widget::text(format!("{e:?}")).into()
+                }
             }
+        } else {
+            error!("No tree is set");
+            iced::widget::text(format!("No tree defined")).into()
         }
+        */
     }
 }

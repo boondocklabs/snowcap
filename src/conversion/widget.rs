@@ -1,61 +1,90 @@
+use std::cell::{RefCell, RefMut};
+use std::rc::Rc;
+
+use iced::advanced::Widget;
 use iced::widget::{Button, PickList, Rule, Space, Themer, Toggler};
 use iced::{widget::Text, Element};
 use iced::{Length, Pixels, Theme};
 use tracing::{debug, info, warn};
 
 use crate::attribute::Attributes;
+use crate::data::DataType;
 use crate::error::ConversionError;
-use crate::message::Message;
-use crate::parser::TreeNode;
+use crate::message::WidgetMessage;
 use crate::parser::Value;
-use crate::MarkupTree;
+use crate::tree::node::TreeNode;
+use crate::widget::WidgetRefInner;
+use crate::MarkupTreeNode;
 
-pub struct SnowcapWidget;
+pub struct SnowcapWidget<'a, M>
+where
+    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    pub node: MarkupTreeNode<'a, M>,
+    pub widget: WidgetRefInner<'a, M>,
+}
 
-impl SnowcapWidget {
-    pub fn convert<'a, SnowcapMessage, AppMessage>(
-        node: &'a TreeNode<AppMessage>,
-        name: &String,
-        attrs: &'a Attributes,
-        content: &'a TreeNode<AppMessage>,
-    ) -> Result<Element<'a, SnowcapMessage>, ConversionError>
+/*
+impl<'a, M> Clone for SnowcapWidget<'a, M>
+where
+    M: Clone + std::fmt::Debug + 'a,
+{
+    fn clone(&self) -> Self {
+        Self {
+            node: self.node.clone(),
+            widget: self.widget.clone(),
+        }
+    }
+}
+*/
+
+impl<'a, M> SnowcapWidget<'a, M>
+where
+    M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    pub fn new(
+        node: MarkupTreeNode<'a, M>,
+        widget: Box<dyn Widget<M, iced::Theme, iced::Renderer> + 'a>,
+    ) -> Self {
+        Self { node, widget }
+    }
+
+    pub fn loading() -> Box<dyn Widget<M, iced::Theme, iced::Renderer>> {
+        Box::new(Text::new("Loading"))
+    }
+
+    pub fn from_tree_node(
+        name: String,
+        attrs: Attributes,
+        content: TreeNode<'a, M>,
+    ) -> Result<Box<dyn Widget<M, iced::Theme, iced::Renderer> + 'a>, ConversionError>
     where
-        SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: 'a + Clone + std::fmt::Debug,
+        M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
     {
         // Handle any nodes with a value of Value::Data
         // as we can infer the widget type from the DataType
         // using .to_widget()
-        match content.inner() {
-            MarkupTree::Value(value) => match &*value.borrow() {
+
+        match &*content.inner.borrow() {
+            MarkupTreeNode::Value(value) => match &*(*value).borrow() {
                 Value::Data {
                     data: Some(data), ..
                 } => {
-                    let arc = (*data).clone();
-                    return crate::data::DataType::to_widget(arc, attrs);
+                    return DataType::to_widget(data.clone(), attrs.clone());
                 }
                 Value::Data { data: None, .. } => {
                     // No data is available, so provide a placeholder widget
                     // TODO: Some kind of spinner?
-                    return Ok(Text::new("Data Not loaded").into());
+                    return Ok(SnowcapWidget::loading());
                 }
                 _ => {}
             },
-            /*
-            MarkupTree::Value(Value::Data {
-                data: Some(data), ..
-            }) => {
-                return data.to_widget(attrs);
-            }
-            MarkupTree::Value(Value::Data { data: None, .. }) => {
-            }
-            */
             _ => {}
         }
 
         match name.as_str() {
             "text" => {
-                let mut text = Text::new(content.inner());
+                let mut text = Text::new(content.inner_ref().clone());
 
                 for attr in attrs {
                     match attr.name().as_str() {
@@ -74,9 +103,8 @@ impl SnowcapWidget {
                     };
                 }
 
-                Ok(text.into())
+                Ok(Box::new(text))
             }
-
             "space" => {
                 let width: Length = if let Some(width) = attrs.get("width") {
                     width.try_into()?
@@ -92,26 +120,25 @@ impl SnowcapWidget {
 
                 let space = Space::new(width, height);
 
-                Ok(space.into())
+                Ok(Box::new(space))
             }
 
             "button" => {
-                let content: Element<'a, SnowcapMessage> = content.try_into()?;
+                let element_id = content.inner_ref().get_element_id().clone();
+                let content: Element<M> = content.into_element()?;
 
-                let button = Button::new(content).on_press_with(|| {
-                    SnowcapMessage::from(Message::Button(node.element_id().clone()))
-                });
+                let button = Button::new(content)
+                    .on_press_with(move || M::from(WidgetMessage::Button(element_id.clone())));
 
-                Ok(button.into())
+                Ok(Box::new(button))
             }
-
             "rule-horizontal" => {
                 let height: Pixels = attrs
                     .get("height")
                     .ok_or_else(|| ConversionError::Missing("height".to_string()))?
                     .try_into()?;
                 debug!("[Rule horizontal height={height:?}]");
-                Ok(Rule::horizontal(height).into())
+                Ok(Box::new(Rule::horizontal(height)))
             }
 
             "rule-vertical" => {
@@ -119,7 +146,7 @@ impl SnowcapWidget {
                     .get("width")
                     .ok_or_else(|| ConversionError::Missing("width".to_string()))?
                     .try_into()?;
-                Ok(Rule::vertical(width).into())
+                Ok(Box::new(Rule::vertical(width)))
             }
 
             "toggler" => {
@@ -129,10 +156,12 @@ impl SnowcapWidget {
                     false
                 };
 
-                let mut toggler = Toggler::new(is_toggled).on_toggle(|toggled| {
-                    attrs.set("toggled", Value::Boolean(toggled));
-                    SnowcapMessage::from(Message::Toggler {
-                        id: node.element_id().clone(),
+                let element_id = content.inner.borrow().get_element_id().clone();
+                let _attrs = attrs.clone();
+                let mut toggler = Toggler::new(is_toggled).on_toggle(move |toggled| {
+                    _attrs.set("toggled", Value::Boolean(toggled));
+                    M::from(WidgetMessage::Toggler {
+                        id: element_id.clone(),
                         toggled,
                     })
                 });
@@ -148,7 +177,7 @@ impl SnowcapWidget {
                     };
                 }
 
-                Ok(toggler.into())
+                Ok(Box::new(toggler))
             }
             "themer" => {
                 // Create an iced::Theme from the name in the "theme" attribute
@@ -157,7 +186,7 @@ impl SnowcapWidget {
                     .ok_or_else(|| ConversionError::Missing("theme".to_string()))?
                     .try_into()?;
 
-                let content: Element<'a, SnowcapMessage, Theme> = content.try_into()?;
+                let content: Element<M, Theme> = content.clone().into_element()?;
 
                 let themer = Themer::new(
                     move |old_theme| {
@@ -166,11 +195,11 @@ impl SnowcapWidget {
                     },
                     content,
                 );
-                Ok(themer.into())
+                Ok(Box::new(themer))
             }
-            "pick-list" => match content.inner() {
-                MarkupTree::Value(value) => {
-                    if let Value::Array(values) = &*value.borrow() {
+            "pick-list" => match &*content.inner.borrow() {
+                MarkupTreeNode::Value(value) => {
+                    if let Value::Array(values) = &*(**value).borrow() {
                         let current = if let Some(attr) = attrs.get("selected") {
                             Some((*attr.value()).to_string().clone())
                         } else {
@@ -180,15 +209,17 @@ impl SnowcapWidget {
                         let values: Vec<String> =
                             values.into_iter().map(|x| x.to_string()).collect();
 
-                        let picklist = PickList::new(values, current, |selected| {
+                        let element_id = content.inner.borrow().get_element_id().clone();
+                        let attrs = attrs.clone();
+                        let picklist = PickList::new(values, current, move |selected| {
                             attrs.set("current_selection", Value::String(selected.clone()));
-                            SnowcapMessage::from(Message::PickListSelected {
-                                id: node.element_id().clone(),
+                            M::from(WidgetMessage::PickListSelected {
+                                id: element_id.clone(),
                                 selected,
                             })
                         });
 
-                        Ok(picklist.into())
+                        Ok(Box::new(picklist))
                     } else {
                         panic!("Expecting Value::Array")
                     }
@@ -201,5 +232,107 @@ impl SnowcapWidget {
                 )))
             }
         }
+    }
+}
+
+/// Implementation of iced Widget trait on SnowcapWidget
+impl<'a, SnowcapMessage> Widget<SnowcapMessage, iced::Theme, iced::Renderer>
+    for SnowcapWidget<'a, SnowcapMessage>
+where
+    SnowcapMessage: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    fn tag(&self) -> iced::advanced::widget::tree::Tag {
+        self.widget.tag()
+    }
+
+    fn state(&self) -> iced::advanced::widget::tree::State {
+        self.widget.state()
+    }
+
+    fn children(&self) -> Vec<iced::advanced::widget::Tree> {
+        self.widget.children()
+    }
+
+    fn diff(&self, tree: &mut iced::advanced::widget::Tree) {
+        self.widget.diff(tree);
+    }
+
+    fn size(&self) -> iced::Size<iced::Length> {
+        self.widget.size()
+    }
+
+    fn size_hint(&self) -> iced::Size<iced::Length> {
+        self.widget.size_hint()
+    }
+
+    fn layout(
+        &self,
+        tree: &mut iced::advanced::widget::Tree,
+        renderer: &iced::Renderer,
+        limits: &iced::advanced::layout::Limits,
+    ) -> iced::advanced::layout::Node {
+        self.widget.layout(tree, renderer, limits)
+    }
+
+    fn operate(
+        &self,
+        tree: &mut iced::advanced::widget::Tree,
+        layout: iced::advanced::Layout<'_>,
+        renderer: &iced::Renderer,
+        operation: &mut dyn iced::advanced::widget::Operation,
+    ) {
+        self.widget.operate(tree, layout, renderer, operation);
+    }
+
+    fn on_event(
+        &mut self,
+        tree: &mut iced::advanced::widget::Tree,
+        event: iced::Event,
+        layout: iced::advanced::Layout<'_>,
+        cursor: iced::advanced::mouse::Cursor,
+        renderer: &iced::Renderer,
+        clipboard: &mut dyn iced::advanced::Clipboard,
+        shell: &mut iced::advanced::Shell<'_, SnowcapMessage>,
+        viewport: &iced::Rectangle,
+    ) -> iced::event::Status {
+        self.widget.on_event(
+            tree, event, layout, cursor, renderer, clipboard, shell, viewport,
+        )
+    }
+
+    fn draw(
+        &self,
+        tree: &iced::advanced::widget::Tree,
+        renderer: &mut iced::Renderer,
+        theme: &iced::Theme,
+        style: &iced::advanced::renderer::Style,
+        layout: iced::advanced::Layout<'_>,
+        cursor: iced::advanced::mouse::Cursor,
+        viewport: &iced::Rectangle,
+    ) {
+        self.widget
+            .draw(tree, renderer, theme, style, layout, cursor, viewport);
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &iced::advanced::widget::Tree,
+        layout: iced::advanced::Layout<'_>,
+        cursor: iced::advanced::mouse::Cursor,
+        viewport: &iced::Rectangle,
+        renderer: &iced::Renderer,
+    ) -> iced::advanced::mouse::Interaction {
+        self.widget
+            .mouse_interaction(tree, layout, cursor, viewport, renderer)
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut iced::advanced::widget::Tree,
+        layout: iced::advanced::Layout<'_>,
+        renderer: &iced::Renderer,
+        translation: iced::Vector,
+    ) -> Option<iced::overlay::Element<SnowcapMessage, iced::Theme, iced::Renderer>> {
+        self.widget.overlay(tree, layout, renderer, translation)
     }
 }
