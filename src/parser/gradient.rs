@@ -67,9 +67,7 @@ mod tests {
     #[traced_test]
     #[test]
     fn test_parse_gradient() {
-        let result = GradientParser::parse_str(
-            "gradient(1.57, [color(10,20,30)@0.2, color(30,50,120)@0.8])",
-        );
+        let result = GradientParser::parse_str("1.57, [10,20,30@0.2, 30,50,120@0.8]");
         assert!(result.is_ok(), "Expected successful parsing of gradient.");
 
         if let Ok(gradient) = result {
