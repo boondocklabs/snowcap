@@ -142,6 +142,7 @@ impl TryInto<Theme> for &Value {
     }
 }
 
+/*
 impl TryInto<Theme> for &Attribute {
     type Error = ConversionError;
 
@@ -157,6 +158,7 @@ impl TryInto<Theme> for Attribute {
         (&*self.value()).try_into()
     }
 }
+*/
 
 #[cfg(test)]
 mod test {

@@ -1,3 +1,4 @@
+/*
 use crate::{attribute::Attribute, error::ConversionError, parser::Value};
 
 impl TryInto<iced::alignment::Vertical> for &Value {
@@ -55,3 +56,5 @@ impl TryInto<iced::alignment::Horizontal> for &Attribute {
         (&*self.value()).try_into()
     }
 }
+
+*/

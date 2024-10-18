@@ -1,13 +1,13 @@
 use std::{
-    cell::{Ref, RefCell, RefMut},
+    cell::{Ref, RefMut},
     collections::VecDeque,
+    marker::PhantomData,
     ops::{Deref, DerefMut},
-    process::exit,
     rc::Rc,
     sync::atomic::AtomicU64,
 };
 
-use tracing::info;
+use tracing::{debug, info, warn};
 
 use crate::{
     conversion::widget::SnowcapWidget,
@@ -27,7 +27,7 @@ where
     M: std::fmt::Debug + From<WidgetMessage> + 'a,
 {
     id: NodeId,
-    pub inner: Rc<RefCell<MarkupTreeNode<'a, M>>>,
+    pub inner: Rc<MarkupTreeNode<'a, M>>,
     pub widget: Option<Box<SnowcapWidget<'a, M>>>,
 }
 
@@ -40,24 +40,18 @@ where
     }
 }
 
-/// Clone the ID and the inner Arc
+/// Clone the ID and the inner Rc
 impl<'a, M> Clone for TreeNode<'a, M>
 where
     M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
 {
     fn clone(&self) -> TreeNode<'a, M> {
-        info!("TreeNode {self:#?} CLONE");
-
-        // Rebuild the widget for this node
-        let tree_node = self.inner.borrow().clone();
-        let widget = SnowcapWidget::from_node(tree_node)
-            .unwrap()
-            .map(|w| Box::new(w));
+        debug!("TreeNode {self:#?} CLONE");
 
         TreeNode {
             id: self.id,
             inner: self.inner.clone(),
-            widget,
+            widget: None,
         }
     }
 }
@@ -70,18 +64,19 @@ where
     where
         M: From<WidgetMessage>,
     {
-        let widget = SnowcapWidget::from_node(inner.clone()).unwrap();
-
         let id = NEXT_NODE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        info!("\n\n\n!!!!!WIDGET BUILT FOR NODE {id}!!!!!!\n\n\n");
         info!("Created TreeNode ID {id} for {inner:#?}");
 
         Self {
             id,
-            inner: Rc::new(RefCell::new(inner)),
-            widget: widget.map(|w| Box::new(w)),
+            inner: Rc::new(inner),
+            widget: None,
         }
+    }
+
+    pub fn borrow<'b>(&'b self) -> NodeRef<'a, 'b, M> {
+        NodeRef::new(self)
     }
 
     /// Get the xx64 hash of this node
@@ -89,33 +84,14 @@ where
     where
         M: From<Event> + From<WidgetMessage>,
     {
-        TreeNodeHasher::Greedy.hash(self.clone())
+        TreeNodeHasher::Greedy.hash(&self)
     }
 
     pub fn thrify_hash(&self) -> NodeHash
     where
         M: From<Event> + From<WidgetMessage>,
     {
-        TreeNodeHasher::Thrifty.hash(self.clone())
-    }
-
-    pub fn inner(&'a self) -> NodeRef<'a, M> {
-        let node = (*self.inner).borrow();
-        NodeRef { node_ref: node }
-    }
-
-    pub fn inner_ref(&self) -> Ref<'_, MarkupTreeNode<'a, M>> {
-        self.inner.borrow()
-    }
-
-    pub fn inner_mut(&'a mut self) -> NodeRefMut<'a, M> {
-        NodeRefMut {
-            node_ref: (*self.inner).borrow_mut(),
-        }
-    }
-
-    pub fn replace_inner(&self, inner: MarkupTreeNode<'a, M>) {
-        *self.inner.deref().borrow_mut() = inner;
+        TreeNodeHasher::Thrifty.hash(&self)
     }
 
     pub fn id(&self) -> NodeId {
@@ -136,6 +112,18 @@ where
         } else {
             None
         }
+    }
+}
+
+/// Implement dereference on a TreeNode, providing a reference to the inner MarkupTreeNode
+impl<'a, M> Deref for TreeNode<'a, M>
+where
+    M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
+{
+    type Target = MarkupTreeNode<'a, M>;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.inner
     }
 }
 
@@ -179,41 +167,38 @@ where
 }
 
 /// A reference to a tree node
-pub struct NodeRef<'a, M>
+#[derive(Debug, Clone)]
+pub struct NodeRef<'t, 'r, M>
 where
-    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+    't: 'r,
+    M: std::fmt::Debug + From<WidgetMessage> + 't,
 {
-    node_ref: Ref<'a, MarkupTreeNode<'a, M>>,
+    node_ref: Rc<&'r TreeNode<'t, M>>,
 }
 
-impl<'a, M> NodeRef<'a, M>
+impl<'t, 'r, M> NodeRef<'t, 'r, M>
 where
-    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+    M: std::fmt::Debug + From<WidgetMessage> + 't,
 {
-    pub fn as_ref(&'a self) -> &'a MarkupTreeNode<M> {
-        &*self.node_ref
+    pub fn new(node: &'r TreeNode<'t, M>) -> Self {
+        Self {
+            node_ref: Rc::new(node),
+        }
+    }
+
+    pub fn inner<'x>(&'x self) -> &'r MarkupTreeNode<'t, M> {
+        &self.node_ref.inner
     }
 }
 
-impl<'a, M, T> AsRef<T> for NodeRef<'a, M>
-where
-    T: ?Sized,
-    <NodeRef<'a, M> as Deref>::Target: AsRef<T>,
-    M: std::fmt::Debug + From<WidgetMessage> + 'a,
-{
-    fn as_ref(&self) -> &T {
-        self.deref().as_ref()
-    }
-}
-
-impl<'a, M> Deref for NodeRef<'a, M>
+impl<'a, 'b, M> Deref for NodeRef<'a, 'b, M>
 where
     M: std::fmt::Debug + From<WidgetMessage> + 'a,
 {
-    type Target = MarkupTreeNode<'a, M>;
+    type Target = TreeNode<'a, M>;
 
     fn deref(&self) -> &Self::Target {
-        &*(self.node_ref)
+        *(self.node_ref)
     }
 }
 
@@ -226,23 +211,59 @@ where
     }
 }
 
-impl<'a, M> TreeNode<'a, M>
+impl<'r, 't, M> IntoIterator for &'r TreeNode<'t, M>
 where
-    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+    M: Clone + std::fmt::Debug + From<WidgetMessage> + 't,
 {
-    // Define an `into_iter` method that returns an iterator
-    // which yields a reference to each node in the tree
-    pub fn iter(&self) -> TreeNodeIter<'a, M>
-    where
-        M: Clone + std::fmt::Debug + 'a,
-    {
-        TreeNodeIter {
-            stack: VecDeque::from([self.clone()]),
+    type Item = NodeRef<'t, 'r, M>;
+    type IntoIter = TreeNodeIterRef<'t, 'r, M>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        // Create an iterator starting with the root node in the stack
+        TreeNodeIterRef {
+            stack: VecDeque::from([NodeRef::new(self)]),
         }
     }
 }
 
-impl<'a, M: 'a> IntoIterator for &TreeNode<'a, M>
+pub struct TreeNodeIterRef<'t, 'r, M>
+where
+    M: std::fmt::Debug + From<WidgetMessage> + 't,
+{
+    stack: VecDeque<NodeRef<'t, 'r, M>>,
+}
+
+impl<'t, 'r, M> Iterator for TreeNodeIterRef<'t, 'r, M>
+where
+    M: Clone + std::fmt::Debug + From<WidgetMessage> + 't,
+    't: 'r,
+{
+    type Item = NodeRef<'t, 'r, M>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.stack.pop_front();
+
+        current.map(|node| {
+            match node.inner() {
+                MarkupTreeNode::Container { content, .. }
+                | MarkupTreeNode::Widget { content, .. } => {
+                    self.stack.push_front(content.borrow());
+                }
+                MarkupTreeNode::Row { contents, .. }
+                | MarkupTreeNode::Column { contents, .. }
+                | MarkupTreeNode::Stack { contents, .. } => {
+                    for content in contents.iter().rev() {
+                        self.stack.push_front(content.borrow());
+                    }
+                }
+                _ => {}
+            }
+            node.clone()
+        })
+    }
+}
+
+impl<'a, M: 'a> IntoIterator for TreeNode<'a, M>
 where
     M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
 {
@@ -251,21 +272,7 @@ where
 
     fn into_iter(self) -> Self::IntoIter {
         TreeNodeIter {
-            stack: VecDeque::from([self.clone()]),
-        }
-    }
-}
-
-impl<'a, M> IntoIterator for &mut TreeNode<'a, M>
-where
-    M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
-{
-    type Item = TreeNode<'a, M>;
-    type IntoIter = TreeNodeIter<'a, M>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        TreeNodeIter {
-            stack: VecDeque::from([self.clone()]),
+            stack: VecDeque::from([self]),
         }
     }
 }
@@ -286,8 +293,8 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop_front();
 
-        if let Some(tree) = current {
-            match &*tree.inner_ref() {
+        if let Some(node) = current {
+            match &*node.inner {
                 MarkupTreeNode::Container { content, .. }
                 | MarkupTreeNode::Widget { content, .. } => {
                     self.stack.push_front(content.clone());
@@ -301,7 +308,7 @@ where
                 }
                 _ => {}
             }
-            Some(tree)
+            Some(node)
         } else {
             None
         }
@@ -313,6 +320,71 @@ where
     AppMessage: std::fmt::Debug + From<WidgetMessage> + 'a,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.inner.borrow().hash(state);
+        self.inner.hash(state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::collections::BTreeMap;
+
+    use tracing::info;
+    use tracing_test::traced_test;
+
+    use crate::message::WidgetMessage;
+    use crate::node_manager::NodeManager;
+    use crate::{attribute::Attributes, Message};
+
+    use super::{MarkupTreeNode, NodeRef};
+    use super::{NodeId, TreeNode};
+
+    type M = Message<String>;
+
+    fn row_tree<'a>() -> TreeNode<'a, M> {
+        let a = TreeNode::new(MarkupTreeNode::Label("Hello".into()));
+        let b = TreeNode::new(MarkupTreeNode::Label("World".into()));
+
+        let row = MarkupTreeNode::Row {
+            element_id: None,
+            attrs: Attributes::default(),
+            contents: Vec::from([a, b]),
+        };
+
+        let root = TreeNode::new(row);
+        root
+    }
+
+    #[traced_test]
+    #[test]
+    fn test_iterator() {
+        let tree = row_tree();
+
+        for node in &tree {
+            info!("Iter node {node:#?}");
+        }
+    }
+
+    #[derive(Debug)]
+    struct Index<'a, M>
+    where
+        M: std::fmt::Debug + From<WidgetMessage> + 'a,
+    {
+        pub index: BTreeMap<NodeId, NodeRef<'a, 'a, M>>,
+    }
+
+    #[traced_test]
+    #[test]
+    fn test_reference() {
+        let mut index = Index::<'static, M> {
+            index: BTreeMap::new(),
+        };
+
+        let tree = row_tree();
+        let r = tree.borrow();
+
+        index.index.insert(r.id, r);
+
+        tree.get_element_id();
     }
 }

@@ -3,13 +3,14 @@ use std::{
     sync::Arc,
 };
 
+use arbutus::NodeId;
 use file_format::FileFormat;
 use iced::Task;
 use parking_lot::Mutex;
 use tokio::io::AsyncReadExt;
 use tracing::{error, info, info_span};
 
-use crate::{connector::Inlet, message::Event, tree::node::NodeId, Error};
+use crate::{connector::Inlet, message::Event, Error};
 
 use super::{
     provider::{Provider, ProviderEvent},
@@ -161,7 +162,7 @@ impl Provider for FileProvider {
         task.chain(self.update_task())
     }
 
-    fn set_node_id(&mut self, node_id: crate::tree::node::NodeId) {
+    fn set_node_id(&mut self, node_id: arbutus::NodeId) {
         self.node_id = Some(node_id);
     }
 }

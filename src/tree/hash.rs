@@ -1,3 +1,5 @@
+/*
+
 use std::hash::{Hash, Hasher};
 
 use tracing::{debug_span, warn};
@@ -144,7 +146,7 @@ pub enum TreeNodeHasher {
 }
 
 impl TreeNodeHasher {
-    fn hash_with<'a, M>(&'a self, node: TreeNode<'a, M>, hasher: &mut impl Hasher)
+    fn hash_with<'a, M>(&self, node: &TreeNode<'a, M>, hasher: &mut impl Hasher)
     where
         M: Clone + std::fmt::Debug + From<Event> + From<WidgetMessage> + 'a,
     {
@@ -158,16 +160,16 @@ impl TreeNodeHasher {
                 node.hash(hasher);
 
                 // Recurse into child nodes
-                let mut iter = node.iter();
+                let mut iter = node.into_iter();
                 iter.next();
                 for child in iter {
-                    self.hash_with(child, hasher);
+                    self.hash_with(&*child, hasher);
                 }
             }
         }
     }
 
-    pub fn hash<'a, M>(&'a self, tree: TreeNode<'a, M>) -> NodeHash
+    pub fn hash<'a, M>(&self, tree: &TreeNode<'a, M>) -> NodeHash
     where
         M: Clone + std::fmt::Debug + From<Event> + From<WidgetMessage> + 'a,
     {
@@ -193,9 +195,9 @@ mod tests {
         let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#).unwrap();
         let c = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#).unwrap();
 
-        let hash_a = TreeNodeHasher::Greedy.hash(a);
-        let hash_b = TreeNodeHasher::Greedy.hash(b);
-        let hash_c = TreeNodeHasher::Greedy.hash(c);
+        let hash_a = TreeNodeHasher::Greedy.hash(&a);
+        let hash_b = TreeNodeHasher::Greedy.hash(&b);
+        let hash_c = TreeNodeHasher::Greedy.hash(&c);
 
         assert_eq!(hash_a, hash_b, "Hashes of the same markup should match");
         assert_ne!(
@@ -204,3 +206,5 @@ mod tests {
         );
     }
 }
+
+*/

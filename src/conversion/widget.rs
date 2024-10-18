@@ -1,192 +1,202 @@
-use std::cell::{RefCell, RefMut};
-use std::rc::Rc;
-
+use crate::attribute::{AttributeType, AttributeValue};
+use crate::{NodeId, NodeRef};
+use arbutus::Node as _;
+use arbutus::NodeRef as _;
 use iced::advanced::Widget;
+use iced::widget::Text;
 use iced::widget::{Button, PickList, Rule, Space, Themer, Toggler};
-use iced::{widget::Text, Element};
-use iced::{Length, Pixels, Theme};
-use tracing::{debug, info, warn};
+use tracing::warn;
 
 use crate::attribute::Attributes;
 use crate::data::DataType;
+use crate::dynamic_widget::DynamicWidget;
 use crate::error::ConversionError;
 use crate::message::WidgetMessage;
+use crate::node::SnowcapNodeData;
 use crate::parser::Value;
-use crate::tree::node::TreeNode;
-use crate::widget::WidgetRefInner;
-use crate::MarkupTreeNode;
 
-pub struct SnowcapWidget<'a, M>
+pub struct SnowcapWidget<M>
 where
-    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+    M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
 {
-    pub node: MarkupTreeNode<'a, M>,
-    pub widget: WidgetRefInner<'a, M>,
+    pub node: NodeRef<M>,
 }
 
-/*
-impl<'a, M> Clone for SnowcapWidget<'a, M>
+impl<M> SnowcapWidget<M>
 where
-    M: Clone + std::fmt::Debug + 'a,
+    M: std::fmt::Debug + From<(NodeId, WidgetMessage)>,
 {
-    fn clone(&self) -> Self {
-        Self {
-            node: self.node.clone(),
-            widget: self.widget.clone(),
-        }
-    }
-}
-*/
-
-impl<'a, M> SnowcapWidget<'a, M>
-where
-    M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
-{
-    pub fn new(
-        node: MarkupTreeNode<'a, M>,
-        widget: Box<dyn Widget<M, iced::Theme, iced::Renderer> + 'a>,
-    ) -> Self {
-        Self { node, widget }
+    pub fn new(node: NodeRef<M>) -> Self {
+        Self { node }
     }
 
-    pub fn loading() -> Box<dyn Widget<M, iced::Theme, iced::Renderer>> {
-        Box::new(Text::new("Loading"))
+    pub fn loading() -> DynamicWidget<M> {
+        DynamicWidget::new(Text::new("Loading"))
+    }
+
+    pub fn missing() -> DynamicWidget<M> {
+        DynamicWidget::new(Text::new("Missing"))
+    }
+
+    fn with_value<R, F>(node: &NodeRef<M>, f: F) -> Result<R, ConversionError>
+    where
+        F: FnOnce(&Value) -> Result<R, ConversionError>,
+    {
+        node.with_data(|node| match &node.data {
+            SnowcapNodeData::Value(value) => f(value),
+            _ => Err(ConversionError::InvalidType(
+                "Expecting Value node in get_node_value".into(),
+            )),
+        })
     }
 
     pub fn from_tree_node(
+        node_id: NodeId,
         name: String,
+        element_id: Option<String>,
         attrs: Attributes,
-        content: TreeNode<'a, M>,
-    ) -> Result<Box<dyn Widget<M, iced::Theme, iced::Renderer> + 'a>, ConversionError>
+        content: Option<NodeRef<M>>,
+    ) -> Result<Box<dyn Widget<M, iced::Theme, iced::Renderer>>, ConversionError>
     where
-        M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
+        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
         // Handle any nodes with a value of Value::Data
         // as we can infer the widget type from the DataType
         // using .to_widget()
 
-        match &*content.inner.borrow() {
-            MarkupTreeNode::Value(value) => match &*(*value).borrow() {
-                Value::Data {
-                    data: Some(data), ..
-                } => {
-                    return DataType::to_widget(data.clone(), attrs.clone());
-                }
-                Value::Data { data: None, .. } => {
-                    // No data is available, so provide a placeholder widget
-                    // TODO: Some kind of spinner?
-                    return Ok(SnowcapWidget::loading());
-                }
+        if let Some(content) = content.clone() {
+            match &content.node().data().data {
+                SnowcapNodeData::Value(value) => match value {
+                    Value::Data {
+                        data: Some(data), ..
+                    } => {
+                        return DataType::to_widget(node_id, data.clone(), attrs.clone());
+                    }
+                    Value::Data { data: None, .. } => {
+                        // No data is available, so provide a placeholder widget
+                        // TODO: Some kind of spinner?
+                        return Ok(Box::new(SnowcapWidget::loading()));
+                    }
+                    _ => {}
+                },
                 _ => {}
-            },
-            _ => {}
+            }
         }
 
         match name.as_str() {
             "text" => {
-                let mut text = Text::new(content.inner_ref().clone());
+                let content = content.ok_or(ConversionError::Missing("text content".into()))?;
+                let text = Self::with_value(&content, |value| {
+                    let mut text = Text::new(value);
+                    let mut style = iced::widget::text::Style::default();
 
-                for attr in attrs {
-                    match attr.name().as_str() {
-                        "size" => {
-                            let pixels: iced::Pixels = attr.try_into()?;
+                    //TODO add wrapping
 
-                            // cosmic-text will panic if the text size is too small
-                            if pixels.0 < 2.0 {
-                                warn!("text size too small. clamping.");
-                                text = text.size(2.0);
-                            } else {
-                                text = text.size(pixels);
+                    for attr in attrs {
+                        (text, style) = match *attr {
+                            AttributeValue::TextColor(color) => {
+                                style.color = Some(color);
+                                (text.color(color), style)
                             }
-                        }
-                        _ => {}
-                    };
-                }
+                            AttributeValue::Border(border) => todo!(),
+                            AttributeValue::Shadow(shadow) => todo!(),
+                            AttributeValue::HorizontalAlignment(horizontal) => {
+                                (text.align_x(horizontal), style)
+                            }
+                            AttributeValue::VerticalAlignment(vertical) => {
+                                (text.align_y(vertical), style)
+                            }
+                            AttributeValue::Padding(padding) => todo!(),
+                            AttributeValue::WidthLength(length) => (text.width(length), style),
+                            AttributeValue::WidthPixels(pixels) => (text.width(pixels), style),
+                            AttributeValue::MaxWidth(pixels) => todo!(),
+                            AttributeValue::HeightLength(length) => (text.height(length), style),
+                            AttributeValue::HeightPixels(pixels) => (text.height(pixels), style),
+                            AttributeValue::Background(background) => todo!(),
+                            AttributeValue::Spacing(pixels) => todo!(),
+                            AttributeValue::Size(pixels) => (text.size(pixels), style),
+                            AttributeValue::CellSize(pixels) => todo!(),
+                            AttributeValue::Clip(_) => todo!(),
+                            AttributeValue::Toggled(_) => todo!(),
+                            AttributeValue::Selected(_) => todo!(),
+                            AttributeValue::Label(_) => todo!(),
+                            _ => {
+                                warn!("Unsupported Text attribute {:?}", attr);
+                                (text, style)
+                            }
+                        };
+                    }
 
-                Ok(Box::new(text))
+                    //Ok(Box::new(text.style(move |_theme| style)))
+                    Ok(Box::new(text))
+                })?;
+
+                Ok(text)
             }
             "space" => {
-                let width: Length = if let Some(width) = attrs.get("width") {
-                    width.try_into()?
-                } else {
-                    Length::Fixed(0.0)
-                };
-
-                let height: Length = if let Some(height) = attrs.get("height") {
-                    height.try_into()?
-                } else {
-                    Length::Fixed(0.0)
-                };
-
-                let space = Space::new(width, height);
-
+                let space = Space::new(1, 1);
                 Ok(Box::new(space))
             }
 
             "button" => {
-                let element_id = content.inner_ref().get_element_id().clone();
-                let content: Element<M> = content.into_element()?;
+                let content = content.ok_or(ConversionError::Missing("button content".into()))?;
+                let content = DynamicWidget::from_node(content)?.into_element();
 
-                let button = Button::new(content)
-                    .on_press_with(move || M::from(WidgetMessage::Button(element_id.clone())));
+                let button = Button::new(content).on_press_with(move || {
+                    M::from((node_id, WidgetMessage::Button(element_id.clone())))
+                });
 
                 Ok(Box::new(button))
             }
             "rule-horizontal" => {
-                let height: Pixels = attrs
-                    .get("height")
-                    .ok_or_else(|| ConversionError::Missing("height".to_string()))?
-                    .try_into()?;
-                debug!("[Rule horizontal height={height:?}]");
-                Ok(Box::new(Rule::horizontal(height)))
+                //debug!("[Rule horizontal height={height:?}]");
+                Ok(Box::new(Rule::horizontal(1)))
             }
 
-            "rule-vertical" => {
-                let width: Pixels = attrs
-                    .get("width")
-                    .ok_or_else(|| ConversionError::Missing("width".to_string()))?
-                    .try_into()?;
-                Ok(Box::new(Rule::vertical(width)))
-            }
+            "rule-vertical" => Ok(Box::new(Rule::vertical(1))),
 
             "toggler" => {
-                let is_toggled: bool = if let Some(width) = attrs.get("toggled") {
-                    width.try_into()?
+                let is_toggled: bool = if let AttributeValue::Toggled(toggled) =
+                    *attrs.clone().get(AttributeType::Toggled).unwrap()
+                {
+                    toggled
                 } else {
                     false
                 };
 
-                let element_id = content.inner.borrow().get_element_id().clone();
                 let _attrs = attrs.clone();
                 let mut toggler = Toggler::new(is_toggled).on_toggle(move |toggled| {
-                    _attrs.set("toggled", Value::Boolean(toggled));
-                    M::from(WidgetMessage::Toggler {
-                        id: element_id.clone(),
-                        toggled,
-                    })
+                    //_attrs.set("toggled", Value::Boolean(toggled));
+                    M::from((
+                        node_id,
+                        WidgetMessage::Toggler {
+                            id: element_id.clone(),
+                            toggled,
+                        },
+                    ))
                 });
 
                 for attr in attrs {
-                    toggler = match attr.name().as_str() {
-                        "size" => {
-                            let pixels: iced::Pixels = attr.try_into()?;
-                            toggler.size(pixels)
-                        }
-                        "label" => toggler.label(attr),
-                        _ => toggler,
+                    toggler = match (*attr).clone() {
+                        AttributeValue::Size(pixels) => toggler.size(pixels),
+                        AttributeValue::Label(label) => toggler.label(label),
+                        AttributeValue::Toggled(_) => toggler,
+                        _ => todo!(),
                     };
                 }
 
                 Ok(Box::new(toggler))
             }
+            /*
             "themer" => {
+                let content = content.ok_or(ConversionError::Missing("themer content".into()))?;
                 // Create an iced::Theme from the name in the "theme" attribute
                 let theme: Theme = attrs
                     .get("theme")
                     .ok_or_else(|| ConversionError::Missing("theme".to_string()))?
                     .try_into()?;
 
-                let content: Element<M, Theme> = content.clone().into_element()?;
+                let content = DynamicWidget::from_node(content)?.into_element();
 
                 let themer = Themer::new(
                     move |old_theme| {
@@ -197,10 +207,14 @@ where
                 );
                 Ok(Box::new(themer))
             }
-            "pick-list" => match &*content.inner.borrow() {
-                MarkupTreeNode::Value(value) => {
-                    if let Value::Array(values) = &*(**value).borrow() {
-                        let current = if let Some(attr) = attrs.get("selected") {
+            */
+            "pick-list" => {
+                let content =
+                    content.ok_or(ConversionError::Missing("pick-list content".into()))?;
+                let picklist = Self::with_value(&content, |value| {
+                    if let Value::Array(values) = value {
+                        let current = if let Some(attr) = attrs.clone().get(AttributeType::Selected)
+                        {
                             Some((*attr.value()).to_string().clone())
                         } else {
                             None
@@ -209,130 +223,31 @@ where
                         let values: Vec<String> =
                             values.into_iter().map(|x| x.to_string()).collect();
 
-                        let element_id = content.inner.borrow().get_element_id().clone();
                         let attrs = attrs.clone();
                         let picklist = PickList::new(values, current, move |selected| {
-                            attrs.set("current_selection", Value::String(selected.clone()));
-                            M::from(WidgetMessage::PickListSelected {
-                                id: element_id.clone(),
-                                selected,
-                            })
+                            //attrs.set("selected", Value::String(selected.clone()));
+                            M::from((
+                                node_id,
+                                WidgetMessage::PickListSelected {
+                                    id: element_id.clone(),
+                                    selected,
+                                },
+                            ))
                         });
 
-                        Ok(Box::new(picklist))
+                        Ok(picklist)
                     } else {
                         panic!("Expecting Value::Array")
                     }
-                }
-                _ => panic!("Expecting MarkupTree::Value"),
-            },
+                })?;
+
+                Ok(Box::new(picklist))
+            }
             _ => {
-                return Err(ConversionError::UnsupportedAttribute(format!(
+                return Err(ConversionError::UnsupportedWidget(format!(
                     "Unhandled element type {name}"
                 )))
             }
         }
-    }
-}
-
-/// Implementation of iced Widget trait on SnowcapWidget
-impl<'a, SnowcapMessage> Widget<SnowcapMessage, iced::Theme, iced::Renderer>
-    for SnowcapWidget<'a, SnowcapMessage>
-where
-    SnowcapMessage: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
-{
-    fn tag(&self) -> iced::advanced::widget::tree::Tag {
-        self.widget.tag()
-    }
-
-    fn state(&self) -> iced::advanced::widget::tree::State {
-        self.widget.state()
-    }
-
-    fn children(&self) -> Vec<iced::advanced::widget::Tree> {
-        self.widget.children()
-    }
-
-    fn diff(&self, tree: &mut iced::advanced::widget::Tree) {
-        self.widget.diff(tree);
-    }
-
-    fn size(&self) -> iced::Size<iced::Length> {
-        self.widget.size()
-    }
-
-    fn size_hint(&self) -> iced::Size<iced::Length> {
-        self.widget.size_hint()
-    }
-
-    fn layout(
-        &self,
-        tree: &mut iced::advanced::widget::Tree,
-        renderer: &iced::Renderer,
-        limits: &iced::advanced::layout::Limits,
-    ) -> iced::advanced::layout::Node {
-        self.widget.layout(tree, renderer, limits)
-    }
-
-    fn operate(
-        &self,
-        tree: &mut iced::advanced::widget::Tree,
-        layout: iced::advanced::Layout<'_>,
-        renderer: &iced::Renderer,
-        operation: &mut dyn iced::advanced::widget::Operation,
-    ) {
-        self.widget.operate(tree, layout, renderer, operation);
-    }
-
-    fn on_event(
-        &mut self,
-        tree: &mut iced::advanced::widget::Tree,
-        event: iced::Event,
-        layout: iced::advanced::Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
-        renderer: &iced::Renderer,
-        clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, SnowcapMessage>,
-        viewport: &iced::Rectangle,
-    ) -> iced::event::Status {
-        self.widget.on_event(
-            tree, event, layout, cursor, renderer, clipboard, shell, viewport,
-        )
-    }
-
-    fn draw(
-        &self,
-        tree: &iced::advanced::widget::Tree,
-        renderer: &mut iced::Renderer,
-        theme: &iced::Theme,
-        style: &iced::advanced::renderer::Style,
-        layout: iced::advanced::Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
-        viewport: &iced::Rectangle,
-    ) {
-        self.widget
-            .draw(tree, renderer, theme, style, layout, cursor, viewport);
-    }
-
-    fn mouse_interaction(
-        &self,
-        tree: &iced::advanced::widget::Tree,
-        layout: iced::advanced::Layout<'_>,
-        cursor: iced::advanced::mouse::Cursor,
-        viewport: &iced::Rectangle,
-        renderer: &iced::Renderer,
-    ) -> iced::advanced::mouse::Interaction {
-        self.widget
-            .mouse_interaction(tree, layout, cursor, viewport, renderer)
-    }
-
-    fn overlay<'b>(
-        &'b mut self,
-        tree: &'b mut iced::advanced::widget::Tree,
-        layout: iced::advanced::Layout<'_>,
-        renderer: &iced::Renderer,
-        translation: iced::Vector,
-    ) -> Option<iced::overlay::Element<SnowcapMessage, iced::Theme, iced::Renderer>> {
-        self.widget.overlay(tree, layout, renderer, translation)
     }
 }

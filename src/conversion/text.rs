@@ -1,9 +1,6 @@
 use iced::widget::text::IntoFragment;
 
-use crate::{
-    attribute::Attribute, message::WidgetMessage, parser::Value, tree::node::NodeRef,
-    MarkupTreeNode,
-};
+use crate::{attribute::Attribute, parser::Value};
 
 /// Converts a [`Value`] reference into a [`Cow<'a, str>`].
 ///
@@ -44,6 +41,13 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &Value {
     }
 }
 
+impl<'a> IntoFragment<'a> for &Value {
+    fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
+        self.into()
+    }
+}
+
+/*
 /// Converts a reference to a [`MarkupTree<AppMessage>`] into a text fragment.
 ///
 /// This implementation extracts and converts the `MarkupTree::Value` variant into
@@ -63,6 +67,7 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &Value {
 /// let markup_tree = MarkupTree::<AppMessage>::Value(Arc::new(RefCell::new(Value::String("Hello".to_string()))));
 /// let fragment: iced::widget::text::Fragment = (&markup_tree).into_fragment();
 /// ```
+
 impl<'a, AppMessage> IntoFragment<'a> for MarkupTreeNode<'a, AppMessage>
 where
     AppMessage: std::fmt::Debug + From<WidgetMessage> + 'a,
@@ -75,18 +80,20 @@ where
     }
 }
 
-impl<'a, AppMessage> IntoFragment<'a> for NodeRef<'a, AppMessage>
+impl<'a, AppMessage> IntoFragment<'a> for NodeRef<'a, 'a, AppMessage>
 where
-    AppMessage: std::fmt::Debug + From<WidgetMessage> + 'a,
+    AppMessage: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
 {
     fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
-        match &*self {
+        match &**self {
             MarkupTreeNode::Value(value) => (&*value.borrow()).into(),
             _ => "Expecting MarkupType::Value".into(),
         }
     }
 }
+*/
 
+/*
 /// Converts a reference to an [`Attribute`] into a text fragment.
 ///
 /// This implementation extracts the value of the `Attribute` and converts it into
@@ -102,3 +109,4 @@ impl<'a> IntoFragment<'a> for Attribute {
         (&*self.value()).into()
     }
 }
+*/

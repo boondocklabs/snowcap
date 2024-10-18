@@ -1,4 +1,7 @@
-use std::num::{ParseFloatError, ParseIntError};
+use std::{
+    num::{ParseFloatError, ParseIntError},
+    str::ParseBoolError,
+};
 
 use thiserror::Error;
 
@@ -16,6 +19,9 @@ pub enum ParseError {
     #[error(transparent)]
     Gradient(#[from] pest::error::Error<super::gradient::Rule>),
 
+    #[error(transparent)]
+    Attribute(#[from] pest::error::Error<super::attribute::Rule>),
+
     #[error("Invalid Color {0}")]
     InvalidColor(String),
 
@@ -26,8 +32,14 @@ pub enum ParseError {
     Integer(ParseIntError),
 
     #[error(transparent)]
+    Boolean(ParseBoolError),
+
+    #[error(transparent)]
     Url(#[from] url::ParseError),
 
     #[error(transparent)]
     QrCode(#[from] iced::widget::qr_code::Error),
+
+    #[error(transparent)]
+    Borrow(#[from] std::cell::BorrowMutError),
 }

@@ -1,17 +1,18 @@
-use std::sync::Arc;
-
-use iced::{widget::Stack, Element};
+use iced::widget::Stack;
 use tracing::info_span;
 
 use crate::{
-    attribute::Attributes, error::ConversionError, message::WidgetMessage, tree::node::TreeNode,
+    attribute::{AttributeValue, Attributes},
+    error::ConversionError,
+    message::WidgetMessage,
+    NodeRef,
 };
 
 pub struct SnowcapStack<'a, M>
 where
     M: std::fmt::Debug + From<WidgetMessage> + 'a,
 {
-    contents: Arc<Vec<TreeNode<'a, M>>>,
+    //contents: Arc<Vec<NodeRef<'a, SnowcapNode<'a, M>, NodeId>>>,
     stack: Stack<'a, M>,
 }
 
@@ -21,7 +22,7 @@ where
 {
     pub fn convert(
         attrs: Attributes,
-        contents: Arc<Vec<TreeNode<'a, M>>>,
+        _contents: Vec<&NodeRef<M>>,
     ) -> Result<Stack<'a, M>, ConversionError>
     where
         //SnowcapMessage: Clone + From<Message<AppMessage>> + 'static,
@@ -30,27 +31,25 @@ where
         let span = info_span!("stack");
         let _span = span.enter();
 
+        /*
         let children: Result<Vec<Element<'a, M>>, ConversionError> = (**contents)
             .iter()
             .map(|item| item.clone().into_element())
             .collect(); // Convert each item into Element
 
         let mut stack = Stack::with_children(children?);
+        */
+
+        let mut stack = Stack::new();
 
         for attr in attrs {
-            stack = match attr.name().as_str() {
-                "width" => {
-                    let width: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
-                    stack.width(width?)
-                }
-                "height" => {
-                    let height: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
-                    stack.height(height?)
-                }
-                _ => return Err(ConversionError::UnsupportedAttribute(attr.name().clone())),
-            }
+            stack = match *attr.value() {
+                AttributeValue::WidthLength(length) => stack.width(length),
+                AttributeValue::HeightLength(length) => stack.height(length),
+                _ => return Err(ConversionError::UnsupportedAttribute(attr, "Stack".into())),
+            };
         }
 
-        Ok(stack.into())
+        Ok(stack)
     }
 }

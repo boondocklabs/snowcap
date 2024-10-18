@@ -1,18 +1,22 @@
+use std::cell::BorrowMutError;
 use std::string::FromUtf8Error;
 
 use thiserror::Error;
 
+use crate::attribute::Attribute;
 use crate::parser::error::ParseError;
 use crate::parser::Rule;
-use crate::tree::node::NodeId;
 
 #[derive(Error, Debug)]
 pub enum ConversionError {
     #[error("invalid type {0}")]
     InvalidType(String),
 
-    #[error("unsupported attribute {0}")]
-    UnsupportedAttribute(String),
+    #[error("{0:?} for {1:?}")]
+    UnsupportedAttribute(Attribute, String),
+
+    #[error("unsupported widget {0}")]
+    UnsupportedWidget(String),
 
     #[error("missing {0}")]
     Missing(String),
@@ -22,6 +26,12 @@ pub enum ConversionError {
 
     #[error(transparent)]
     Parse(#[from] ParseError),
+
+    #[error("downcast {0}")]
+    Downcast(String),
+
+    #[error(transparent)]
+    BorrowMut(#[from] BorrowMutError),
 }
 
 #[derive(Error, Debug)]
@@ -54,7 +64,7 @@ pub enum Error {
     Encoding(FromUtf8Error),
 
     #[error("Node {0} Not Found")]
-    NodeNotFound(NodeId),
+    NodeNotFound(arbutus::NodeId),
 
     #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
@@ -63,4 +73,10 @@ pub enum Error {
     #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
     Notify(#[from] notify::Error),
+
+    #[error(transparent)]
+    BorrowMut(#[from] BorrowMutError),
+
+    #[error("Deadlock {0}")]
+    Deadlock(String),
 }

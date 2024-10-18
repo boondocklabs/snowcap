@@ -150,6 +150,16 @@ mod tests {
 
     #[traced_test]
     #[test]
+    fn test_parse_hex_color_invalid() {
+        let result = ColorParser::parse_str("#fffff");
+        assert!(
+            result.is_err(),
+            "Expected error parsing invalid hex color string"
+        );
+    }
+
+    #[traced_test]
+    #[test]
     fn test_parse_hex_color_rrggbbaa() {
         let result = ColorParser::parse_str("#FF5733");
         assert!(result.is_ok(), "Expected successful parsing of HEX color.");

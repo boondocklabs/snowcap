@@ -1,73 +1,120 @@
-use std::{
-    cell::RefMut,
-    ops::{Deref, DerefMut},
-};
+/*
+use strum::{EnumDiscriminants, EnumIter};
+
+#[derive(EnumDiscriminants)]
+#[strum_discriminants(derive(EnumIter, Hash))]
+pub enum WidgetType<'a, M> {
+    Button(iced::widget::Button<'a, M>),
+    //Canvas(iced::widget::Canvas),
+    Checkbox(iced::widget::Checkbox<'a, M>),
+    Column(iced::widget::Column<'a, M>),
+    //ComboBox(iced::widget::ComboBox<'a, (), M>),
+    Container(iced::widget::Container<'a, M>),
+    Image(iced::widget::Image),
+    MouseArea(iced::widget::MouseArea<'a, M>),
+    PaneGrid(iced::widget::PaneGrid<'a, M>),
+    //PickList(iced::widget::PickList<'a, (), (), (), M>),
+    Text(iced::widget::Text<'a>),
+}
+*/
+
+use std::sync::{atomic::AtomicU64, Arc};
 
 use iced::advanced::Widget;
+use parking_lot::{ArcRwLockUpgradableReadGuard, RawRwLock, RwLock};
+use tracing::info;
 
-pub type WidgetRefInner<'a, M> = Box<dyn Widget<M, iced::Theme, iced::Renderer> + 'a>;
-
-/// A reference to a dyn Widget
-pub struct WidgetRef<'a, SnowcapMessage> {
-    widget: RefMut<'a, WidgetRefInner<'a, SnowcapMessage>>,
+pub struct WidgetWrap<M> {
+    node: Arc<RwLock<Box<dyn Widget<M, iced::Theme, iced::Renderer>>>>,
+    version: Arc<AtomicU64>,
 }
 
-impl<'a, SnowcapMessage> WidgetRef<'a, SnowcapMessage> {
-    pub fn new(widget: RefMut<'a, WidgetRefInner<'a, SnowcapMessage>>) -> Self {
-        Self { widget }
-    }
-
-    pub fn widget(&self) -> &WidgetRefInner<'a, SnowcapMessage> {
-        &self.widget
-    }
-
-    pub fn widget_mut(&mut self) -> &mut WidgetRefInner<'a, SnowcapMessage> {
-        &mut self.widget
+impl<M> std::fmt::Debug for WidgetWrap<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WidgetWrap")
     }
 }
 
-impl<'a, SnowcapMessage> Deref for WidgetRef<'a, SnowcapMessage> {
-    type Target = WidgetRefInner<'a, SnowcapMessage>;
+impl<M> WidgetWrap<M> {
+    pub fn new(node: Box<dyn Widget<M, iced::Theme, iced::Renderer>>) -> Self {
+        info!("NEW WIDGET WRAPPED");
+        Self {
+            node: Arc::new(RwLock::new(node)),
+            version: Arc::new(AtomicU64::new(0)),
+        }
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &*self.widget
+    pub fn widget(&self) -> WidgetRef<M>
+    where
+        M: 'static,
+    {
+        info!("Issue new WidgetRef. Version {:?}", self.version);
+        let guard = self.node.try_upgradable_read_arc().unwrap();
+        WidgetRef::new(guard, self.version.clone())
+    }
+
+    pub fn replace(&mut self, new: Box<dyn Widget<M, iced::Theme, iced::Renderer>>) {
+        *self.node.write() = new;
+        self.version
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        info!("Widget replaced. Version {:?}", self.version);
     }
 }
 
-impl<'a, SnowcapMessage> DerefMut for WidgetRef<'a, SnowcapMessage> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.widget
-    }
+pub struct WidgetRef<M> {
+    widget: ArcRwLockUpgradableReadGuard<
+        RawRwLock,
+        Box<dyn Widget<M, iced::Theme, iced::Renderer> + 'static>,
+    >,
+    version: Arc<AtomicU64>,
 }
 
-/*
-/// Implementation of iced Widget trait on WidgetRef.
-/// This allows us to create Elements directly from a WidgetRef
-impl<'a, SnowcapMessage> Widget<SnowcapMessage, iced::Theme, iced::Renderer>
-    for WidgetRef<'a, SnowcapMessage>
+impl<M> WidgetRef<M>
+where
+    M: 'static,
 {
+    pub fn new(
+        guard: ArcRwLockUpgradableReadGuard<
+            RawRwLock,
+            Box<dyn Widget<M, iced::Theme, iced::Renderer> + 'static>,
+        >,
+        version: Arc<AtomicU64>,
+    ) -> Self {
+        info!("NEW WIDGET REF CREATED");
+        Self {
+            widget: guard,
+            version,
+        }
+    }
+}
+
+/// Implement Widget on a mutable reference to a DynamicWidget
+impl<'a, M> Widget<M, iced::Theme, iced::Renderer> for WidgetRef<M> {
     fn tag(&self) -> iced::advanced::widget::tree::Tag {
-        self.widget().tag()
+        self.widget.tag()
     }
 
     fn state(&self) -> iced::advanced::widget::tree::State {
-        self.widget().state()
+        info!("Proxy state");
+        self.widget.state()
     }
 
     fn children(&self) -> Vec<iced::advanced::widget::Tree> {
-        self.widget().children()
+        self.widget.children()
     }
 
     fn diff(&self, tree: &mut iced::advanced::widget::Tree) {
-        self.widget().diff(tree);
+        self.version.load(std::sync::atomic::Ordering::SeqCst);
+        info!("Proxy diff version {:?}", self.version);
+        self.widget.diff(tree);
     }
 
     fn size(&self) -> iced::Size<iced::Length> {
-        self.widget().size()
+        self.widget.size()
     }
 
     fn size_hint(&self) -> iced::Size<iced::Length> {
-        self.widget().size_hint()
+        self.widget.size_hint()
     }
 
     fn layout(
@@ -76,7 +123,7 @@ impl<'a, SnowcapMessage> Widget<SnowcapMessage, iced::Theme, iced::Renderer>
         renderer: &iced::Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> iced::advanced::layout::Node {
-        self.widget().layout(tree, renderer, limits)
+        self.widget.layout(tree, renderer, limits)
     }
 
     fn operate(
@@ -86,7 +133,7 @@ impl<'a, SnowcapMessage> Widget<SnowcapMessage, iced::Theme, iced::Renderer>
         renderer: &iced::Renderer,
         operation: &mut dyn iced::advanced::widget::Operation,
     ) {
-        self.widget().operate(tree, layout, renderer, operation);
+        self.widget.operate(tree, layout, renderer, operation);
     }
 
     fn on_event(
@@ -97,12 +144,14 @@ impl<'a, SnowcapMessage> Widget<SnowcapMessage, iced::Theme, iced::Renderer>
         cursor: iced::advanced::mouse::Cursor,
         renderer: &iced::Renderer,
         clipboard: &mut dyn iced::advanced::Clipboard,
-        shell: &mut iced::advanced::Shell<'_, SnowcapMessage>,
+        shell: &mut iced::advanced::Shell<'_, M>,
         viewport: &iced::Rectangle,
     ) -> iced::event::Status {
-        self.widget_mut().on_event(
-            tree, event, layout, cursor, renderer, clipboard, shell, viewport,
-        )
+        self.widget.with_upgraded(|w| {
+            w.on_event(
+                tree, event, layout, cursor, renderer, clipboard, shell, viewport,
+            )
+        })
     }
 
     fn draw(
@@ -115,7 +164,7 @@ impl<'a, SnowcapMessage> Widget<SnowcapMessage, iced::Theme, iced::Renderer>
         cursor: iced::advanced::mouse::Cursor,
         viewport: &iced::Rectangle,
     ) {
-        self.widget()
+        self.widget
             .draw(tree, renderer, theme, style, layout, cursor, viewport);
     }
 
@@ -127,7 +176,7 @@ impl<'a, SnowcapMessage> Widget<SnowcapMessage, iced::Theme, iced::Renderer>
         viewport: &iced::Rectangle,
         renderer: &iced::Renderer,
     ) -> iced::advanced::mouse::Interaction {
-        self.widget()
+        self.widget
             .mouse_interaction(tree, layout, cursor, viewport, renderer)
     }
 
@@ -137,9 +186,14 @@ impl<'a, SnowcapMessage> Widget<SnowcapMessage, iced::Theme, iced::Renderer>
         layout: iced::advanced::Layout<'_>,
         renderer: &iced::Renderer,
         translation: iced::Vector,
-    ) -> Option<iced::overlay::Element<'b, SnowcapMessage, iced::Theme, iced::Renderer>> {
-        self.widget_mut()
-            .overlay(tree, layout, renderer, translation)
+    ) -> Option<iced::overlay::Element<M, iced::Theme, iced::Renderer>> {
+        /*
+        self.widget.with_upgraded(
+            |widget: &'b mut Box<dyn Widget<M, iced::Theme, iced::Renderer>>| {
+                widget.overlay(tree, layout, renderer, translation)
+            },
+        )
+        */
+        None
     }
 }
-*/

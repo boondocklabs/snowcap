@@ -17,7 +17,6 @@ impl GradientParser {
         let pairs = GradientParser::parse(Rule::gradient, data)?;
 
         for pair in pairs {
-            debug!("{pair:#?}");
             match pair.as_rule() {
                 Rule::gradient => {
                     let mut inner = pair.into_inner();
@@ -34,7 +33,6 @@ impl GradientParser {
 
                     let stops = inner.next().unwrap().into_inner();
                     for stop in stops {
-                        debug!("Stop {stop:#?}");
                         let mut inner = stop.into_inner();
                         let color_str = inner.next().unwrap().as_str();
                         let offset: f32 = inner
@@ -45,6 +43,8 @@ impl GradientParser {
                             .map_err(ParseError::Float)?;
 
                         let color = ColorParser::parse_str(color_str)?;
+
+                        debug!("Stop offset={} color={:?}", offset, color);
 
                         linear = linear.add_stop(offset, color);
                     }

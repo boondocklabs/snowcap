@@ -2,11 +2,14 @@ use std::process::exit;
 
 use iced::{Element, Task, Theme};
 use snowcap::Snowcap;
+use tracing::error;
 use tracing_subscriber::{self, EnvFilter};
 
 pub fn main() -> iced::Result {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
+        .with_file(true)
+        .with_line_number(true)
         .init();
 
     let args: Vec<String> = std::env::args().collect();
@@ -17,44 +20,47 @@ pub fn main() -> iced::Result {
         .theme(SnowcapViewer::theme)
         .run_with(move || {
             let mut viewer = SnowcapViewer::new(filename.clone());
-            let init_task = viewer.init();
-            (
-                // Provide initial state and init task
-                viewer, init_task,
-            )
+
+            match viewer {
+                Ok(mut viewer) => {
+                    let init_task = viewer.init();
+                    (
+                        // Provide initial state and init task
+                        viewer, init_task,
+                    )
+                }
+                Err(err) => {
+                    tracing::error!("{:#?}", err);
+                    exit(-1)
+                }
+            }
         })
 }
 
 struct SnowcapViewer {
     filename: String,
-    parse_error: Option<snowcap::Error>,
-    snow: Option<Snowcap<'static, Message>>,
+    snow: Snowcap<Message>,
 }
 
 impl SnowcapViewer {
-    pub fn new(filename: String) -> Self {
+    pub fn new(filename: String) -> Result<Self, snowcap::Error> {
         let mut viewer = Self {
             filename,
-            snow: None,
-            parse_error: None,
+            snow: Snowcap::new().unwrap(),
         };
-        viewer.load().ok();
-        viewer
+
+        viewer.load()?;
+
+        Ok(viewer)
     }
 
     pub fn load(&mut self) -> Result<(), snowcap::Error> {
-        let mut snow = Snowcap::new()?;
-        snow.load_file(self.filename.clone())?;
-        self.snow = Some(snow);
-
+        self.snow.load_file(self.filename.clone())?;
         Ok(())
     }
 
     fn init(&mut self) -> Task<snowcap::Message<Message>> {
-        if let Some(snow) = &mut self.snow {
-            return snow.init();
-        }
-        Task::none()
+        self.snow.init()
     }
 }
 
@@ -66,39 +72,11 @@ impl SnowcapViewer {
         &mut self,
         mut message: snowcap::Message<Message>,
     ) -> Task<snowcap::Message<Message>> {
-        if let Some(snow) = &mut self.snow {
-            snow.update(&mut message)
-        } else {
-            Task::none()
-        }
-
-        /*
-        match message {
-            snowcap::Message::App(app) => match app {
-                Message::Watcher(event) => {
-                    debug!("Watcher {event:?}");
-                    match event.kind {
-                        notify::EventKind::Modify(ModifyKind::Data(_)) => {
-                            info!("Snowcap File Modified. Reloading");
-                            self.load().ok();
-                            Task::none()
-                        }
-                        _ => Task::none(),
-                    }
-                }
-            },
-        }
-        */
+        self.snow.update(&mut message)
     }
 
     fn view(&self) -> Element<snowcap::Message<Message>> {
-        if let Some(snow) = &self.snow {
-            snow.view()
-        } else if let Some(err) = &self.parse_error {
-            iced::widget::text(format!("{err:#?}")).into()
-        } else {
-            iced::widget::text("No snowcap file loaded").into()
-        }
+        self.snow.view()
     }
 
     fn theme(&self) -> Theme {

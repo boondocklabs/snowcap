@@ -32,8 +32,8 @@ New:
             input_current, input_new
         );
 
-        let current_greedy = TreeNodeHasher::Greedy.hash(input_current.clone());
-        let new_greedy = TreeNodeHasher::Greedy.hash(input_new.clone());
+        let current_greedy = TreeNodeHasher::Greedy.hash(&input_current);
+        let new_greedy = TreeNodeHasher::Greedy.hash(&input_new);
 
         if current_greedy == new_greedy {
             debug!("Greedy hashes of both trees are equal. Trees are identical.");
@@ -45,6 +45,7 @@ New:
 
         let mut parent: Option<TreeNode<M>> = None;
 
+        /*
         loop {
             let current_node = current_iter.next();
             let new_node = new_iter.next();
@@ -53,7 +54,7 @@ New:
                 if current.thrify_hash() != new.thrify_hash() {
                     debug!("Nodes differ between\n\n{current:?}\n\nand\n\n{new:?}");
 
-                    let new_inner: MarkupTreeNode<M> = new.inner.borrow().clone();
+                    let new_inner: MarkupTreeNode<M> = new.inner.clone();
 
                     current.replace_inner(new_inner);
 
@@ -74,6 +75,7 @@ New:
 
             parent = current_node;
         }
+        */
 
         debug!("CHECK AFTER PATCH");
         //Self::diff(input_current, input_new);

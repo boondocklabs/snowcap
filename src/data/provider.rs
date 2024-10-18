@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::{connector::Inlet, message::Event, tree::node::NodeId};
+use crate::{connector::Inlet, message::Event, ConversionError};
+use arbutus::NodeId;
 use iced::{
     advanced::graphics::futures::{MaybeSend, MaybeSync},
     Task,
@@ -30,4 +31,18 @@ pub enum ProviderEvent {
         data: FileData,
     },
     Error(String),
+}
+
+impl TryFrom<Event> for ProviderEvent {
+    type Error = crate::ConversionError;
+
+    fn try_from(event: Event) -> Result<Self, crate::ConversionError> {
+        if let Event::Provider(provider_event) = event {
+            Ok(provider_event)
+        } else {
+            Err(ConversionError::InvalidType(
+                "expecting Event::Provider".into(),
+            ))
+        }
+    }
 }

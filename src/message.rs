@@ -1,16 +1,19 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{hash::Hash, path::PathBuf, sync::Arc};
 
 use iced::widget::markdown::Url;
 use parking_lot::Mutex;
+use strum::{EnumDiscriminants, EnumIter};
 
 use crate::{
     data::provider::{Provider, ProviderEvent},
     parser::ElementId,
+    NodeId,
 };
 
 /// Represents a message that can be passed within the application.
 /// This enum encapsulates both application-specific messages and other events.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumDiscriminants)]
+#[strum_discriminants(derive(EnumIter, Hash))]
 pub enum Message<AppMessage> {
     // Provide a default empty state, to allow std::mem::take()
     // to take ownership of a variant
@@ -23,7 +26,10 @@ pub enum Message<AppMessage> {
     /// * `AppMessage` - The type of the application-specific message.
     App(AppMessage),
 
-    Widget(WidgetMessage),
+    Widget {
+        node_id: NodeId,
+        message: WidgetMessage,
+    },
 
     Event(Event),
 }
@@ -64,13 +70,17 @@ impl<AppMessage> From<Event> for Message<AppMessage> {
     }
 }
 
-impl<AppMessage> From<WidgetMessage> for Message<AppMessage> {
-    fn from(m: WidgetMessage) -> Self {
-        Message::Widget(m)
+impl<AppMessage> From<(NodeId, WidgetMessage)> for Message<AppMessage> {
+    fn from(widget_message: (NodeId, WidgetMessage)) -> Self {
+        Message::Widget {
+            node_id: widget_message.0,
+            message: widget_message.1,
+        }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumDiscriminants)]
+#[strum_discriminants(derive(EnumIter, Hash))]
 pub enum Event {
     Empty,
 

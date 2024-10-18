@@ -4,11 +4,12 @@ use super::{
     provider::{Provider, ProviderEvent},
     FileData,
 };
-use crate::{connector::Inlet, message::Event, parser::error::ParseError, tree::node::NodeId};
+use crate::{connector::Inlet, message::Event, parser::error::ParseError};
+use arbutus::NodeId;
 use iced::Task;
 use parking_lot::Mutex;
 use reqwest::header::CONTENT_TYPE;
-use tracing::info;
+use tracing::{debug, info};
 use url::Url;
 
 #[derive(Debug)]
@@ -45,7 +46,7 @@ impl Provider for UrlProvider {
                 let response = reqwest::get(url.clone()).await.unwrap();
 
                 let data = if let Some(content_type) = response.headers().get(CONTENT_TYPE) {
-                    info!("CONTENT TYPE {content_type:?}");
+                    debug!("Content Type: {content_type:?}");
                     let mime: mime::Mime = content_type.to_str().unwrap().parse().unwrap();
 
                     match mime.type_() {

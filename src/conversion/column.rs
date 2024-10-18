@@ -1,59 +1,58 @@
-use std::sync::Arc;
-
 use iced::{widget::Column, Element};
+use tracing::debug_span;
 
 use crate::{
-    attribute::Attributes, error::ConversionError, message::WidgetMessage, tree::node::TreeNode,
+    attribute::{AttributeValue, Attributes},
+    dynamic_widget::DynamicWidget,
+    error::ConversionError,
+    message::WidgetMessage,
+    NodeId, NodeRef,
 };
-
-use super::widget::SnowcapWidget;
 
 pub struct SnowcapColumn<'a, M>
 where
-    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+    M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
 {
-    contents: Arc<Vec<TreeNode<'a, M>>>,
+    contents: Vec<DynamicWidget<M>>,
     column: Column<'a, M>,
 }
 
 impl<'a, M> SnowcapColumn<'a, M>
 where
-    M: std::fmt::Debug + From<WidgetMessage> + 'a,
+    M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
 {
     pub fn convert(
         attrs: Attributes,
-        contents: Arc<Vec<TreeNode<'a, M>>>,
-    ) -> Result<Column<'a, M>, ConversionError>
+        contents: &Vec<NodeRef<M>>,
+    ) -> Result<Column<'static, M>, ConversionError>
     where
-        //SnowcapMessage: Clone + From<Message<AppMessage>> + 'static,
-        M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
+        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let children: Result<Vec<Element<'a, M>>, ConversionError> = (**contents)
-            .iter()
-            .map(|item| item.clone().into_element())
-            .collect(); // Convert each item into Element
+        let children: Result<Vec<Element<'static, M>>, ConversionError> = debug_span!("row-item")
+            .in_scope(|| {
+                (contents)
+                    .iter()
+                    .map(|item| {
+                        tracing::debug!("{:#?}", item);
+
+                        let element = DynamicWidget::from_node(item.clone())?.into_element();
+                        Ok(element)
+                    })
+                    .collect() // Convert each item into Element
+            });
 
         let mut col = Column::with_children(children?);
 
         for attr in attrs {
-            col = match attr.name().as_str() {
-                "spacing" => todo!(),
-                "padding" => todo!(),
-                "width" => {
-                    let width: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
-                    col.width(width?)
-                }
-                "height" => {
-                    let height: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
-                    col.height(height?)
-                }
-                "align" => {
-                    let align: Result<iced::alignment::Horizontal, ConversionError> =
-                        (&*attr.value()).try_into();
-                    col.align_x(align?)
-                }
-                _ => return Err(ConversionError::UnsupportedAttribute(attr.name().clone())),
-            }
+            col = match *attr {
+                AttributeValue::HorizontalAlignment(horizontal) => col.align_x(horizontal),
+                AttributeValue::Padding(padding) => col.padding(padding),
+                AttributeValue::WidthLength(length) => col.width(length),
+                AttributeValue::HeightLength(length) => col.height(length),
+                AttributeValue::Spacing(pixels) => col.spacing(pixels),
+                AttributeValue::MaxWidth(length) => col.max_width(length),
+                _ => return Err(ConversionError::UnsupportedAttribute(attr, "Column".into())),
+            };
         }
 
         Ok(col)
