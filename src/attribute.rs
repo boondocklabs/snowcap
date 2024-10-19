@@ -17,7 +17,7 @@ use crate::SyncError;
 mod hash;
 
 #[derive(Debug, Clone, EnumDiscriminants, PartialEq)]
-#[strum_discriminants(derive(EnumIter, Hash))]
+#[strum_discriminants(derive(EnumIter, Hash, PartialOrd, Ord))]
 #[strum_discriminants(name(AttributeKind))]
 pub enum AttributeValue {
     TextColor(iced::Color),
@@ -111,12 +111,41 @@ impl Attributes {
         }
     }
 
+    pub fn each_with<T, F>(&self, mut with: T, f: F) -> Result<T, SyncError>
+    where
+        F: Fn(&mut T, &Attribute),
+    {
+        match self.0.try_read_for(Duration::from_secs(1)) {
+            Some(guard) => {
+                // Collect and sort keys from the HashMap to yield attributes
+                // in a deterministic order
+                let mut keys: Vec<&AttributeKind> = guard.keys().collect();
+                keys.sort();
+
+                for key in keys {
+                    if let Some(attr) = guard.get(key) {
+                        f(&mut with, attr);
+                    }
+                }
+
+                Ok(with)
+            }
+            None => Err(SyncError::Deadlock(format!(
+                "RwLock read lock failed in Attributes::each()",
+            ))),
+        }
+    }
+
     /// Get the Xxh64 hash of the set of attributes
     pub fn xxhash(&self) -> u64 {
         let mut hasher = Xxh64::new(0);
-        for attr in self {
-            attr.hash(&mut hasher);
-        }
+
+        hasher = self
+            .each_with(hasher, |hasher, attr| {
+                attr.hash(hasher);
+            })
+            .unwrap();
+
         hasher.finish()
     }
 }
@@ -147,6 +176,16 @@ impl std::fmt::Display for Attributes {
     }
 }
 
+/// Convert a reference to [`Attributes`] into an [`AttributeIter`]
+/// This attempts to obtain an Arc read lock guard, which has a `static lifetime
+/// so the guard can be included in the iterator state. This holds the read lock
+/// while the iterator is in scope.
+///
+/// Each attribute discriminant present in the set of attributes is collected
+/// into a vector, and the iterator then steps through the discriminants to
+/// obtain each variant from the HashMap.
+///
+/// It is required that the iterator order is deterministic for hashing
 impl<'a> IntoIterator for &'a Attributes {
     type Item = Attribute;
 
@@ -158,8 +197,12 @@ impl<'a> IntoIterator for &'a Attributes {
             Some(guard) => {
                 // Collect a vec of AttributeKinds for each key in the HashMap. The iterator will iterate through
                 // each kind from the set to yield a reference to the [`Attribute`] while the RwLock Arc read guard is held
-                let attr_kinds: Vec<AttributeKind> =
+                let mut attr_kinds: Vec<AttributeKind> =
                     guard.iter().map(|(kind, _attr)| *kind).collect();
+
+                // Ensure the vec of attributes is sorted, so the attributes are yielded in a deterministic order.
+                // This is required for producing deterministic hashes of attribute sets.
+                attr_kinds.sort();
 
                 AttributeIter {
                     guard,
@@ -185,11 +228,10 @@ impl IntoIterator for Attributes {
 
 pub struct AttributeIter {
     guard: ArcRwLockReadGuard<RawRwLock, HashMap<AttributeKind, Attribute>>,
-    //attr_kinds: Vec<AttributeKind>,
     iter: std::vec::IntoIter<AttributeKind>,
 }
 
-impl Iterator for AttributeIter {
+impl<'a> Iterator for AttributeIter {
     type Item = Attribute;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -201,6 +243,17 @@ impl Iterator for AttributeIter {
     }
 }
 
+/// Attribute represents an attribute value which has been parsed from the
+/// markup and converted into a concrete iced/rust type.
+///
+/// This struct wraps the [`AttributeValue`] enum which defines
+/// a variant for each possible attribute that can appear in the markup.
+///
+/// An Attribute is typically stored in an [`Attributes`] container, which
+/// maintains a set of Attribute values belonging to a Widget.
+///
+/// An Attribute may be hashed, and will include the encapsulated data
+/// for tree diffing to detect changes in attribute values.
 #[derive(Debug, Clone, Hash)]
 pub struct Attribute {
     value: AttributeValue,
@@ -282,14 +335,24 @@ mod attribute_tests {
     #[traced_test]
     #[test]
     fn test_attributes_hash() {
-        // Should be equal
-        let a = AttributeParser::parse_attributes("width:1, height:2").unwrap();
-        let b = AttributeParser::parse_attributes("width:1, height:2").unwrap();
-        assert_eq!(a.xxhash(), b.xxhash());
+        // Repeat these tests a number of times to check if the iterators are producing
+        // attributes in a deterministic way
+        for _ in 0..100 {
+            // Should be equal
+            let a = AttributeParser::parse_attributes("width:1, height:2").unwrap();
+            let b = AttributeParser::parse_attributes("width:1, height:2").unwrap();
+            assert_eq!(a.xxhash(), b.xxhash());
 
-        // Should not be equal
-        let a = AttributeParser::parse_attributes("width:1, height:1").unwrap();
-        let b = AttributeParser::parse_attributes("width:1, height:2").unwrap();
-        assert_ne!(a.xxhash(), b.xxhash());
+            // Flipping the order of attributes should also have equal hashes,
+            // as long as the values stay the same.
+            let a = AttributeParser::parse_attributes("height:2, width:1").unwrap();
+            let b = AttributeParser::parse_attributes("width:1, height:2").unwrap();
+            assert_eq!(a.xxhash(), b.xxhash());
+
+            // Should not be equal
+            let a = AttributeParser::parse_attributes("width:1, height:1").unwrap();
+            let b = AttributeParser::parse_attributes("width:1, height:2").unwrap();
+            assert_ne!(a.xxhash(), b.xxhash());
+        }
     }
 }
