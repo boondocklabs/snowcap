@@ -1,8 +1,9 @@
-use crate::attribute::{AttributeType, AttributeValue};
+use crate::attribute::{AttributeKind, AttributeValue};
 use crate::{NodeId, NodeRef};
 use arbutus::Node as _;
 use arbutus::NodeRef as _;
 use iced::advanced::Widget;
+use iced::widget::text::Wrapping;
 use iced::widget::Text;
 use iced::widget::{Button, PickList, Rule, Space, Themer, Toggler};
 use tracing::warn;
@@ -90,7 +91,7 @@ where
                     let mut text = Text::new(value);
                     let mut style = iced::widget::text::Style::default();
 
-                    //TODO add wrapping
+                    //TODO add shaping, font
 
                     for attr in attrs {
                         (text, style) = match *attr {
@@ -98,28 +99,19 @@ where
                                 style.color = Some(color);
                                 (text.color(color), style)
                             }
-                            AttributeValue::Border(border) => todo!(),
-                            AttributeValue::Shadow(shadow) => todo!(),
                             AttributeValue::HorizontalAlignment(horizontal) => {
                                 (text.align_x(horizontal), style)
                             }
                             AttributeValue::VerticalAlignment(vertical) => {
                                 (text.align_y(vertical), style)
                             }
-                            AttributeValue::Padding(padding) => todo!(),
                             AttributeValue::WidthLength(length) => (text.width(length), style),
                             AttributeValue::WidthPixels(pixels) => (text.width(pixels), style),
-                            AttributeValue::MaxWidth(pixels) => todo!(),
                             AttributeValue::HeightLength(length) => (text.height(length), style),
                             AttributeValue::HeightPixels(pixels) => (text.height(pixels), style),
-                            AttributeValue::Background(background) => todo!(),
-                            AttributeValue::Spacing(pixels) => todo!(),
                             AttributeValue::Size(pixels) => (text.size(pixels), style),
-                            AttributeValue::CellSize(pixels) => todo!(),
-                            AttributeValue::Clip(_) => todo!(),
-                            AttributeValue::Toggled(_) => todo!(),
-                            AttributeValue::Selected(_) => todo!(),
-                            AttributeValue::Label(_) => todo!(),
+                            AttributeValue::Wrapping(wrapping) => (text.wrapping(wrapping), style),
+                            AttributeValue::Shaping(shaping) => (text.shaping(shaping), style),
                             _ => {
                                 warn!("Unsupported Text attribute {:?}", attr);
                                 (text, style)
@@ -156,8 +148,8 @@ where
             "rule-vertical" => Ok(Box::new(Rule::vertical(1))),
 
             "toggler" => {
-                let is_toggled: bool = if let AttributeValue::Toggled(toggled) =
-                    *attrs.clone().get(AttributeType::Toggled).unwrap()
+                let is_toggled: bool = if let Some(AttributeValue::Toggled(toggled)) =
+                    attrs.clone().get(AttributeKind::Toggled)?
                 {
                     toggled
                 } else {
@@ -166,7 +158,7 @@ where
 
                 let _attrs = attrs.clone();
                 let mut toggler = Toggler::new(is_toggled).on_toggle(move |toggled| {
-                    //_attrs.set("toggled", Value::Boolean(toggled));
+                    _attrs.set(AttributeValue::Toggled(toggled)).unwrap();
                     M::from((
                         node_id,
                         WidgetMessage::Toggler {
@@ -187,35 +179,37 @@ where
 
                 Ok(Box::new(toggler))
             }
-            /*
             "themer" => {
                 let content = content.ok_or(ConversionError::Missing("themer content".into()))?;
-                // Create an iced::Theme from the name in the "theme" attribute
-                let theme: Theme = attrs
-                    .get("theme")
-                    .ok_or_else(|| ConversionError::Missing("theme".to_string()))?
-                    .try_into()?;
+
+                let theme =
+                    if let Some(AttributeValue::Theme(theme)) = attrs.get(AttributeKind::Theme)? {
+                        Some(theme)
+                    } else {
+                        None
+                    };
 
                 let content = DynamicWidget::from_node(content)?.into_element();
 
                 let themer = Themer::new(
                     move |old_theme| {
-                        info!("Themer from {:?} to {:?}", old_theme, theme);
-                        theme.clone()
+                        tracing::info!("Themer from {:?} to {:?}", old_theme, theme);
+                        theme.as_ref().unwrap().clone()
                     },
                     content,
                 );
                 Ok(Box::new(themer))
             }
-            */
             "pick-list" => {
                 let content =
                     content.ok_or(ConversionError::Missing("pick-list content".into()))?;
+
                 let picklist = Self::with_value(&content, |value| {
                     if let Value::Array(values) = value {
-                        let current = if let Some(attr) = attrs.clone().get(AttributeType::Selected)
+                        let current = if let Some(AttributeValue::Selected(selected)) =
+                            attrs.get(AttributeKind::Selected)?
                         {
-                            Some((*attr.value()).to_string().clone())
+                            Some(selected)
                         } else {
                             None
                         };
@@ -223,9 +217,12 @@ where
                         let values: Vec<String> =
                             values.into_iter().map(|x| x.to_string()).collect();
 
-                        let attrs = attrs.clone();
+                        let _attrs = attrs.clone();
                         let picklist = PickList::new(values, current, move |selected| {
-                            //attrs.set("selected", Value::String(selected.clone()));
+                            _attrs
+                                .set(AttributeValue::Selected(selected.clone()))
+                                .unwrap();
+
                             M::from((
                                 node_id,
                                 WidgetMessage::PickListSelected {

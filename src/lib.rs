@@ -30,8 +30,9 @@ use event::EventHandler;
 pub use iced;
 use iced::advanced::graphics::futures::MaybeSend;
 use iced::widget::Text;
+use message::Command;
 use message::Event;
-use message::EventDiscriminants;
+use message::EventKind;
 use message::MessageDiscriminants;
 use message::WidgetMessage;
 use node::SnowcapNode;
@@ -86,10 +87,14 @@ where
     tree: Arc<Mutex<Option<IndexedTree<Message<AppMessage>>>>>,
 
     #[cfg(not(target_arch = "wasm32"))]
-    watcher: FsEventWatcher,
+    provider_watcher: FsEventWatcher,
+
+    #[cfg(not(target_arch = "wasm32"))]
+    markup_watcher: FsEventWatcher,
+
     event_endpoint: Endpoint<Event>,
 
-    event_handler: HashMap<EventDiscriminants, DynamicHandler<'static, Message<AppMessage>>>,
+    event_handler: HashMap<EventKind, DynamicHandler<'static, Message<AppMessage>>>,
 
     #[cfg(not(target_arch = "wasm32"))]
     notify_state: Arc<Mutex<FsNotifyState<Message<AppMessage>>>>,
@@ -107,7 +112,11 @@ where
 
         #[cfg(not(target_arch = "wasm32"))]
         // Initialize the filesystem watcher
-        let watcher = Self::init_watcher(event_endpoint.get_inlet());
+        let provider_watcher = Self::init_watcher(event_endpoint.get_inlet());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        // Initialize the filesystem watcher
+        let markup_watcher = Self::init_watcher(event_endpoint.get_inlet());
 
         let tree = Arc::new(Mutex::new(None));
 
@@ -120,7 +129,8 @@ where
             filename: None,
             tree,
             #[cfg(not(target_arch = "wasm32"))]
-            watcher,
+            provider_watcher,
+            markup_watcher,
             event_endpoint,
             event_handler: HashMap::new(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -131,9 +141,9 @@ where
         let provider_handler = ProviderEventHandler::new(snow.tree.clone());
 
         snow.event_handler.insert(
-            EventDiscriminants::Provider,
+            EventKind::Provider,
             DynamicHandler::new::<ProviderEvent, Arc<Mutex<ProviderState<Message<AppMessage>>>>>(
-                EventDiscriminants::Provider,
+                EventKind::Provider,
                 provider_handler,
             ),
         );
@@ -143,9 +153,9 @@ where
 
         #[cfg(not(target_arch = "wasm32"))]
         snow.event_handler.insert(
-            EventDiscriminants::FsNotify,
+            EventKind::FsNotify,
             DynamicHandler::new::<notify::Event, Arc<Mutex<FsNotifyState<Message<AppMessage>>>>>(
-                EventDiscriminants::FsNotify,
+                EventKind::FsNotify,
                 fsevent_handler,
             ),
         );
@@ -168,7 +178,7 @@ where
         //info!("Pending Updates: {pending:?}");
 
         for node in pending.into_iter().rev() {
-            DynamicWidget::from_node(node).unwrap();
+            //DynamicWidget::from_node(node).unwrap();
         }
     }
 
@@ -265,7 +275,7 @@ where
         self.filename = Some(filename.clone());
 
         // Register the markup file with the watcher
-        self.watcher
+        self.provider_watcher
             .watch(filename, notify::RecursiveMode::NonRecursive)?;
 
         //self.tree = Some(tree);
@@ -360,7 +370,7 @@ where
     }
 
     fn handle_event(&mut self, event: Event) -> Task<Message<AppMessage>> {
-        let event_type: EventDiscriminants = (&event).into();
+        let event_type: EventKind = (&event).into();
         if let Some(handler) = self.event_handler.get(&event_type) {
             debug!("Found handler {handler:#?}");
             let (module_event, module_state): (Box<dyn Any>, Box<dyn Any>) = match event {
@@ -394,7 +404,7 @@ where
                     info!("{provider:?} register {filename:?} with watcher");
 
                     match self
-                        .watcher
+                        .provider_watcher
                         .watch(&filename, notify::RecursiveMode::NonRecursive)
                     {
                         Ok(_) => {
@@ -437,6 +447,11 @@ where
                 warn!("Update called on Empty Message");
                 Task::none()
             }
+
+            Message::Command(Command::Reload) => {
+                self.reload_file();
+                Task::none()
+            }
         }
     }
 
@@ -463,7 +478,7 @@ where
             }
             */
 
-            root.with_data(|node| match node.data {
+            let res = root.with_data(|node| match node.data {
                 SnowcapNodeData::Container => match DynamicWidget::from_node(root.clone()) {
                     Ok(widget) => Ok(widget.into_element()),
                     Err(e) => {
@@ -472,8 +487,12 @@ where
                     }
                 },
                 _ => Ok(Text::new("Expecting Container root node").into()),
-            })
-            .unwrap_or(Text::new("Failed to convert tree").into())
+            });
+
+            match res {
+                Ok(element) => element,
+                Err(e) => Text::new(format!("{e:#?}")).into(),
+            }
         } else {
             iced::widget::Text::new("No tree defined").into()
         }

@@ -32,6 +32,8 @@ pub enum Message<AppMessage> {
     },
 
     Event(Event),
+
+    Command(Command),
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +72,12 @@ impl<AppMessage> From<Event> for Message<AppMessage> {
     }
 }
 
+impl<AppMessage> From<Command> for Message<AppMessage> {
+    fn from(command: Command) -> Self {
+        Message::Command(command)
+    }
+}
+
 impl<AppMessage> From<(NodeId, WidgetMessage)> for Message<AppMessage> {
     fn from(widget_message: (NodeId, WidgetMessage)) -> Self {
         Message::Widget {
@@ -81,6 +89,7 @@ impl<AppMessage> From<(NodeId, WidgetMessage)> for Message<AppMessage> {
 
 #[derive(Debug, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(EnumIter, Hash))]
+#[strum_discriminants(name(EventKind))]
 pub enum Event {
     Empty,
 
@@ -106,4 +115,11 @@ impl Default for Event {
     fn default() -> Self {
         Event::Empty
     }
+}
+
+#[derive(Debug, Clone, EnumDiscriminants)]
+#[strum_discriminants(derive(EnumIter, Hash))]
+#[strum_discriminants(name(CommandKind))]
+pub enum Command {
+    Reload,
 }

@@ -4,7 +4,11 @@ use iced::{advanced::graphics::futures::MaybeSend, Task};
 use parking_lot::Mutex;
 use tracing::info;
 
-use crate::{data::provider::Provider, message::Event, IndexedTree};
+use crate::{
+    data::provider::Provider,
+    message::{Command, Event},
+    IndexedTree,
+};
 
 use super::EventHandler;
 
@@ -47,7 +51,7 @@ where
 
 impl<M> EventHandler<M> for FsNotifyEventHandler<M>
 where
-    M: std::fmt::Debug + From<Event> + MaybeSend + 'static,
+    M: std::fmt::Debug + From<Event> + From<Command> + MaybeSend + 'static,
 {
     type Event = notify::Event;
     type State = Arc<Mutex<FsNotifyState<M>>>;
@@ -74,6 +78,8 @@ where
                         // Since we didn't find the path in the map of nodes
                         // which reference the changed file, we can assume
                         // that this is the markup file itself that has changed.
+
+                        tasks.push(Task::done(M::from(Command::Reload)));
 
                         /*
                         if let Err(e) = self.reload_file() {

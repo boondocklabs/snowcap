@@ -1,13 +1,13 @@
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{collections::HashMap, ops::Deref, sync::Arc, time::Duration};
 
 use parking_lot::{ArcRwLockReadGuard, RawRwLock, RwLock};
 use strum::{EnumDiscriminants, EnumIter};
 
-use crate::Error;
+use crate::SyncError;
 
-#[derive(Debug, Clone, EnumDiscriminants)]
+#[derive(Debug, Clone, EnumDiscriminants, PartialEq)]
 #[strum_discriminants(derive(EnumIter, Hash))]
-#[strum_discriminants(name(AttributeType))]
+#[strum_discriminants(name(AttributeKind))]
 pub enum AttributeValue {
     TextColor(iced::Color),
     Border(iced::Border),
@@ -28,43 +28,76 @@ pub enum AttributeValue {
     Toggled(bool),
     Selected(String),
     Label(String),
+    Theme(iced::Theme),
+    Wrapping(iced::widget::text::Wrapping),
+    Shaping(iced::widget::text::Shaping),
+}
+
+impl AttributeValue {
+    /// Get the discriminant of this [`AttributeValue`], returning an [`AttributeKind`]
+    pub fn kind(&self) -> AttributeKind {
+        self.into()
+    }
 }
 
 impl std::fmt::Display for AttributeValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let attribute_type: AttributeType = self.into();
+        let attribute_type: AttributeKind = self.into();
         write!(f, "{:?}", attribute_type)
     }
 }
 
+/// A set of ['Attribute']. This is represented as a ['HashMap'] wrapped in an ['Arc'] and ['parking_lot::RwLock']
+/// allowing the attributes to be cloned, and sent between threads
 #[derive(Default, Clone)]
-pub struct Attributes(Arc<RwLock<Vec<Attribute>>>);
+pub struct Attributes(Arc<RwLock<HashMap<AttributeKind, Attribute>>>);
 
 impl Attributes {
-    pub fn push(&mut self, attr: Attribute) -> Result<(), crate::Error> {
-        // NOTE: This will panic if the lock is already locked
-        // TODO: Propagate error
+    /// Create an empty set of attributes
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Get the number of attributes in the set
+    pub fn len(&self) -> usize {
+        self.0.read().len()
+    }
+
+    /// Try to acquire a write lock, and push the [`Attribute`] to the set of [`Attributes`]
+    pub fn push(&mut self, attr: Attribute) -> Result<(), SyncError> {
         if let Some(mut guard) = self.0.try_write() {
-            guard.push(attr);
+            guard.insert(attr.kind(), attr);
             Ok(())
         } else {
-            Err(Error::Deadlock(format!(
+            Err(SyncError::Deadlock(format!(
                 "RwLock try_write() failed in Attributes::push() {:#?}",
                 attr
             )))
         }
     }
 
-    pub fn get(self, find: AttributeType) -> Option<Attribute> {
-        for attr in self.0.read().iter() {
-            let attr_type: AttributeType = (&**attr).into();
-
-            if find == attr_type {
-                return Some(attr.clone());
-            }
+    /// Get an [`AttributeValue`] from the set of [`Attributes'] for the specified [`AttributeKind`]
+    pub fn get(&self, kind: AttributeKind) -> Result<Option<AttributeValue>, SyncError> {
+        match self.0.try_read_for(Duration::from_secs(1)) {
+            Some(guard) => Ok(guard.get(&kind).map(|attr| attr.value().clone())),
+            None => Err(SyncError::Deadlock(format!(
+                "RwLock read lock failed in Attributes::get() {:?}",
+                kind
+            ))),
         }
+    }
 
-        None
+    pub fn set(&self, value: AttributeValue) -> Result<(), SyncError> {
+        match self.0.try_write_for(Duration::from_secs(1)) {
+            Some(mut guard) => {
+                guard.insert(value.kind(), Attribute::new(value));
+                Ok(())
+            }
+            None => Err(SyncError::Deadlock(format!(
+                "RwLock write lock failed in Attributes::set() {:?}",
+                value
+            ))),
+        }
     }
 }
 
@@ -100,8 +133,19 @@ impl<'a> IntoIterator for &'a Attributes {
     type IntoIter = AttributeIter;
 
     fn into_iter(self) -> Self::IntoIter {
+        // Acquire an ArcRwLockReadGuard. This has a static lifetime that we can use with Iterator
         match self.0.try_read_arc_for(Duration::from_secs(1)) {
-            Some(guard) => AttributeIter { guard, index: 0 },
+            Some(guard) => {
+                // Collect a vec of AttributeKinds for each key in the HashMap. The iterator will iterate through
+                // each kind from the set to yield a reference to the [`Attribute`] while the RwLock Arc read guard is held
+                let attr_kinds: Vec<AttributeKind> =
+                    guard.iter().map(|(kind, _attr)| *kind).collect();
+
+                AttributeIter {
+                    guard,
+                    iter: attr_kinds.into_iter(),
+                }
+            }
             None => {
                 panic!("Deadlock in Attributes iterator");
             }
@@ -120,24 +164,20 @@ impl IntoIterator for Attributes {
 }
 
 pub struct AttributeIter {
-    guard: ArcRwLockReadGuard<RawRwLock, Vec<Attribute>>,
-    index: usize,
+    guard: ArcRwLockReadGuard<RawRwLock, HashMap<AttributeKind, Attribute>>,
+    //attr_kinds: Vec<AttributeKind>,
+    iter: std::vec::IntoIter<AttributeKind>,
 }
 
 impl Iterator for AttributeIter {
     type Item = Attribute;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let res = self.guard.get(self.index).map(|item| item.clone());
-        self.index += 1;
-        res
-    }
-}
-
-impl FromIterator<Attribute> for Attributes {
-    fn from_iter<T: IntoIterator<Item = Attribute>>(iter: T) -> Self {
-        let attributes: Vec<Attribute> = iter.into_iter().collect();
-        Attributes(Arc::new(RwLock::new(attributes)))
+        if let Some(kind) = &self.iter.next() {
+            self.guard.get(kind).map(|item| item.clone())
+        } else {
+            None
+        }
     }
 }
 
@@ -155,15 +195,59 @@ impl Deref for Attribute {
 }
 
 impl Attribute {
+    /// Return a reference to the inner [`AttributeValue`'] for this Attribute
     pub fn value<'a>(&'a self) -> &'a AttributeValue {
         &self.value
     }
 
+    /// Return a mutable reference to the inner [`AttributeValue`'] for this Attribute
     pub fn value_mut<'a>(&'a mut self) -> &'a mut AttributeValue {
         &mut self.value
     }
 
+    /// Create a new [`Attribute`] with the provided [`AttributeValue`]
     pub fn new(value: AttributeValue) -> Self {
         Self { value }
+    }
+}
+
+/// Hash the discriminant of the inner AttributeValue of this Attribute
+impl std::hash::Hash for Attribute {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value().kind().hash(state);
+    }
+}
+
+/// Test for equality of the discriminant of the inner [`AttributeValue`] of this [`Attribute`]
+impl PartialEq for Attribute {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind() == other.kind()
+    }
+}
+
+impl Eq for Attribute {}
+
+#[cfg(test)]
+mod attribute_tests {
+    use super::*;
+    use tracing_test::traced_test;
+
+    #[traced_test]
+    #[test]
+    fn test_attribute() {
+        let mut attrs = Attributes::new();
+
+        let attr = Attribute::new(AttributeValue::Clip(true));
+        attrs.push(attr).unwrap();
+        assert!(attrs.len() == 1);
+
+        // Pushing the same attribute should not change the length
+        let attr = Attribute::new(AttributeValue::Clip(true));
+        attrs.push(attr).unwrap();
+        assert!(attrs.len() == 1);
+
+        for attr in attrs {
+            assert!(attr.kind() == AttributeKind::Clip)
+        }
     }
 }

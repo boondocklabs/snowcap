@@ -2,22 +2,20 @@
 {<bg:gradient(0.8,[#202030@0.0, #404045@0.5, #323030@1.0]), text-color:#ffffff>
 
     // Create a column for the top bar, and bottom content
-    |[
+    |<padding:5>[
         // Top bar container with a fixed height, and filling the width
-        {<align-x:center, align-y:center, padding:1,2, height:100, width:fill, border:color(#ababab)>
+        {<align-x:center, align-y:center, padding:10,10,10,10, height:100, width:fill, border:color(#a0a0a0),width(2.0),radius(10.0), bg:color(#505050)>
             row<align:center, spacing:30>[
                 image#ferris(file!("samples/ferris.png")),
-                text#title<size:40,text-color:#aaaaee>("Snowcap Viewer")
+                text#title<size:30, text-color:#80e0ff, wrapping:none, shaping:advanced>("Snowcap Viewer")
             ]
         },
 
-        rule-horizontal<height:1>(),
-
         // Bottom container
         {
-            -<height:fill>[
+            -<height:fill, padding:top(5), spacing:5>[
                 // Left column
-                {<width:200, height:fill, align-x:center, padding: 10.0>
+                {<width:200, height:fill, align-x:center, padding: 10.0, border:color(#a0a0a0),width(1),radius(10)>
                     |<align:center>[
                         svg(file!("samples/coder.svg")),
                         pick-list#foo<selected:"foo">(["foo", "bar"]),
@@ -33,10 +31,8 @@
                     ]
                 },
 
-                rule-vertical<width:2>(),
-
                 // Middle Column
-                {<width:fill, height:fill, align-x:center, align-y:top, padding:10.0>
+                {<width:fill, height:fill, align-x:center, align-y:top, padding:10.0, border:color(#a0a0a0), width(1), radius(10)>
                     |<align:center>[
                         markdown(file!("README.md")),
                         qr-code<cell-size:10>(qr!("https://iced.rs")),
@@ -47,10 +43,8 @@
                     ]
                 },
 
-                rule-vertical<width:2>(),
-
                 // Right Column
-                {<width:200, align-x:left, padding:10.0>
+                {<width:200, height:fill, align-x:left, padding:10.0, border:color(#a0a0a0), width(1), radius(10)>
                     |[
                         text<size:24>("Ipsum"),
                         text(url!("http://corporatelorem.kovah.de/api/3?format=text"))

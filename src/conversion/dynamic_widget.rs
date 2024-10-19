@@ -4,8 +4,8 @@ use iced::widget::Text;
 use tracing::{info, trace_span};
 
 use crate::{
-    attribute::Attributes, message::WidgetMessage, node::SnowcapNodeData, widget::WidgetWrap,
-    ConversionError, DynamicWidget, NodeId, NodeRef,
+    attribute::Attributes, message::WidgetMessage, node::SnowcapNodeData, ConversionError,
+    DynamicWidget, NodeId, NodeRef,
 };
 
 use super::{

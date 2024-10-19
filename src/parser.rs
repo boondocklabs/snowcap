@@ -179,12 +179,6 @@ where
         let mut attrs: Option<Attributes> = None;
 
         for pair in inner {
-            debug!(
-                "{} {:#?} {}",
-                type_name::<Self>(),
-                pair.as_rule(),
-                pair.as_str()
-            );
             match pair.as_rule() {
                 Rule::id => {
                     let container_id = pair.into_inner().as_str();
@@ -338,7 +332,6 @@ where
         pair: Pair<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
     ) -> Result<(), ParseError> {
-        debug!("{:?} {:?}", pair.as_rule(), pair.as_str());
         match pair.as_rule() {
             Rule::container => Self::parse_container(pair, builder),
             Rule::row => Self::parse_row(pair, builder),

@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use crate::{message::EventDiscriminants, ConversionError, Error};
+use crate::{message::EventKind, ConversionError, Error};
 use iced::Task;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -77,7 +77,7 @@ pub struct DynamicHandler<'a, M>
 where
     M: std::fmt::Debug,
 {
-    event_type: EventDiscriminants,
+    event_type: EventKind,
     handler: Box<dyn EventHandler<M, Event = Box<dyn Any>, State = Box<dyn Any>> + 'a>,
 }
 
@@ -98,7 +98,7 @@ where
     M: std::fmt::Debug + 'a,
 {
     pub fn new<E, S>(
-        event_type: EventDiscriminants,
+        event_type: EventKind,
         handler: impl EventHandler<M, Event = E, State = S> + 'a, // Take an event handler for a specific event type E
     ) -> Self
     where

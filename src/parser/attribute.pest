@@ -2,8 +2,6 @@ WHITESPACE        = _{ " " | "\t" | "\r" | "\n" }
 COMMENT           = _{ SingleLineComment }
 SingleLineComment =  { "//" ~ (!"\n" ~ ANY)* }
 
-name = @{ (ASCII_ALPHA | "-" | "#")* }
-
 string = ${ "\"" ~ inner ~ "\"" }
 inner  = @{ char* }
 char   =  {
@@ -18,8 +16,15 @@ float = @{
 integer = @{ ASCII_DIGIT* }
 
 boolean = { true | false }
-true    = { ^"true" | ^"t" | "1" }
-false   = { ^"false" | ^"f" | "0" }
+true    = { ^"true" }
+false   = { ^"false" }
+
+glyph    = { ^"glyph" }
+word     = { ^"word" }
+none     = { ^"none" }
+either   = { ^"either" | ^"both" }
+basic    = { ^"basic" }
+advanced = { ^"advanced" }
 
 attributes = _{
     attr_padding
@@ -42,13 +47,11 @@ attributes = _{
   | attr_label
   | attr_clip
   | attr_toggled
+  | attr_wrapping
+  | attr_shaping
 }
 
-// Padding can define padding on any 4 sides of a container
-// A single float will apply padding to all 4 sides
-// Two floats will apply the first padding value to top/bottom, and second value to left/right
-// Four floats will apply individual padding to top, right, bottom, left
-attr_padding = { ^"padding" ~ ":" ~ (padding_full | padding_edge | padding_uniform | padding_option_list) }
+attr_padding = { ^"padding" ~ ":" ~ (full | edge | uniform | padding_option_list) }
 
 attr_width      = { ^"width" ~ ":" ~ (length | pixels) }
 attr_height     = { ^"height" ~ ":" ~ (length | pixels) }
@@ -60,12 +63,14 @@ attr_spacing    = { ^"spacing" ~ ":" ~ pixels }
 attr_align_x    = { ^"align-x" ~ ":" ~ horizontal }
 attr_align_y    = { ^"align-y" ~ ":" ~ vertical }
 attr_align      = { ^"align" ~ ":" ~ (horizontal | vertical) }
-attr_text_color = { (^"text-color" | ^"text-colour") ~ ":" ~ color }
+attr_text_color = { (^"text-color" | ^"text-colour") ~ ":" ~ (color_hex | option_color) }
 attr_background = { (^"background" | ^"bg") ~ ":" ~ (option_gradient | option_color) }
 attr_selected   = { (^"selected") ~ ":" ~ string }
 attr_label      = { (^"label") ~ ":" ~ string }
 attr_clip       = { (^"clip") ~ ":" ~ boolean }
 attr_toggled    = { (^"toggled") ~ ":" ~ boolean }
+attr_wrapping   = { (^"wrapping") ~ ":" ~ (glyph | word | none | either) }
+attr_shaping    = { (^"shaping") ~ ":" ~ (basic | advanced) }
 
 attr_border = { (^"border") ~ ":" ~ border_option_list }
 attr_shadow = { (^"shadow") ~ ":" ~ shadow_option_list }
@@ -74,22 +79,24 @@ padding_option_list = _{ padding_option ~ ("," ~ padding_option)* }
 padding_option      = _{ option_top | option_bottom | option_left | option_right }
 
 border_option_list = _{ border_option ~ ("," ~ border_option)* }
-border_option      = _{ option_color }
+border_option      = _{ option_color | option_width | option_radius }
 
 shadow_option_list = _{ shadow_option ~ ("," ~ shadow_option)* }
 shadow_option      = _{ option_top | option_bottom | option_left | option_right }
 
-option_color    = _{ (^"color" | ^"colour") ~ "(" ~ color ~ ")" }
-option_gradient = _{ (^"gradient") ~ "(" ~ gradient ~ ")" }
-option_top      =  { top ~ "(" ~ float ~ ")" }
-option_bottom   =  { bottom ~ "(" ~ float ~ ")" }
-option_left     =  { left ~ "(" ~ float ~ ")" }
-option_right    =  { right ~ "(" ~ float ~ ")" }
+option_color    = { (^"color" | ^"colour") ~ "(" ~ color ~ ")" }
+option_gradient = { (^"gradient") ~ "(" ~ gradient ~ ")" }
+option_width    = { (^"width" | ^"w") ~ "(" ~ float ~ ")" }
+option_radius   = { (^"radius") ~ "(" ~ (full | uniform) ~ ")" }
+option_top      = { top ~ "(" ~ float ~ ")" }
+option_bottom   = { bottom ~ "(" ~ float ~ ")" }
+option_left     = { left ~ "(" ~ float ~ ")" }
+option_right    = { right ~ "(" ~ float ~ ")" }
 
 // uniform padding
-padding_uniform = { float }
-padding_edge    = { ((float ~ ",") ~ float) }
-padding_full    = { ((float ~ ","){3} ~ float) }
+uniform = { float }
+edge    = { ((float ~ ",") ~ float) }
+full    = { ((float ~ ","){3} ~ float) }
 
 // Length
 length       = { fill_portion | fixed | fill | shrink }
@@ -107,13 +114,19 @@ horizontal = { left | center | right }
 // Vertical Alignment
 vertical = { top | center | bottom }
 
-alignment = { top | bottom | left | right | center }
+// alignment = { top | bottom | left | right | center }
 
 left   = { ^"left" | ^"l" }
 right  = { ^"right" | ^"r" }
 top    = { ^"top" | ^"t" }
 bottom = { ^"bottom" | ^"b" }
 center = { ^"center" | ^"centre" | ^"c" }
+
+color_hex_rrggbbaa = _{ ASCII_HEX_DIGIT{8} }
+color_hex_rrggbb   = _{ ASCII_HEX_DIGIT{6} }
+color_hex_rgba     = _{ ASCII_HEX_DIGIT{4} }
+color_hex_rgb      = _{ ASCII_HEX_DIGIT{3} }
+color_hex          =  { "#" ~ (color_hex_rrggbbaa | color_hex_rrggbb | color_hex_rgba | color_hex_rgb) }
 
 // Colors are parsed as strings, and passed to ColorParser
 color = @{ proxy }

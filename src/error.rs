@@ -8,6 +8,12 @@ use crate::parser::error::ParseError;
 use crate::parser::Rule;
 
 #[derive(Error, Debug)]
+pub enum SyncError {
+    #[error("Deadlock {0}")]
+    Deadlock(String),
+}
+
+#[derive(Error, Debug)]
 pub enum ConversionError {
     #[error("invalid type {0}")]
     InvalidType(String),
@@ -32,6 +38,9 @@ pub enum ConversionError {
 
     #[error(transparent)]
     BorrowMut(#[from] BorrowMutError),
+
+    #[error(transparent)]
+    Sync(#[from] SyncError),
 }
 
 #[derive(Error, Debug)]
@@ -77,6 +86,6 @@ pub enum Error {
     #[error(transparent)]
     BorrowMut(#[from] BorrowMutError),
 
-    #[error("Deadlock {0}")]
-    Deadlock(String),
+    #[error(transparent)]
+    Sync(#[from] SyncError),
 }
