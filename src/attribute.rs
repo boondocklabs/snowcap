@@ -1,9 +1,20 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc, time::Duration};
+//! A set of utilities for managing and manipulating attributes in various forms.
+
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+    ops::Deref,
+    sync::Arc,
+    time::Duration,
+};
 
 use parking_lot::{ArcRwLockReadGuard, RawRwLock, RwLock};
 use strum::{EnumDiscriminants, EnumIter};
+use xxhash_rust::xxh64::Xxh64;
 
 use crate::SyncError;
+
+mod hash;
 
 #[derive(Debug, Clone, EnumDiscriminants, PartialEq)]
 #[strum_discriminants(derive(EnumIter, Hash))]
@@ -99,6 +110,15 @@ impl Attributes {
             ))),
         }
     }
+
+    /// Get the Xxh64 hash of the set of attributes
+    pub fn xxhash(&self) -> u64 {
+        let mut hasher = Xxh64::new(0);
+        for attr in self {
+            attr.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
 }
 
 impl std::fmt::Debug for Attributes {
@@ -181,7 +201,7 @@ impl Iterator for AttributeIter {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct Attribute {
     value: AttributeValue,
 }
@@ -209,26 +229,20 @@ impl Attribute {
     pub fn new(value: AttributeValue) -> Self {
         Self { value }
     }
-}
 
-/// Hash the discriminant of the inner AttributeValue of this Attribute
-impl std::hash::Hash for Attribute {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.value().kind().hash(state);
+    /// Get the Xxh64 hash of this attribute, including the inner values
+    pub fn xxhash(&self) -> u64 {
+        let mut hasher = Xxh64::new(0);
+        self.hash(&mut hasher);
+        hasher.finish()
     }
 }
-
-/// Test for equality of the discriminant of the inner [`AttributeValue`] of this [`Attribute`]
-impl PartialEq for Attribute {
-    fn eq(&self, other: &Self) -> bool {
-        self.kind() == other.kind()
-    }
-}
-
-impl Eq for Attribute {}
 
 #[cfg(test)]
 mod attribute_tests {
+
+    use crate::parser::attribute::AttributeParser;
+
     use super::*;
     use tracing_test::traced_test;
 
@@ -249,5 +263,33 @@ mod attribute_tests {
         for attr in attrs {
             assert!(attr.kind() == AttributeKind::Clip)
         }
+    }
+
+    #[traced_test]
+    #[test]
+    fn test_attribute_hash() {
+        let a = Attribute::new(AttributeValue::Clip(true));
+        let b = Attribute::new(AttributeValue::Clip(false));
+
+        assert_ne!(a.xxhash(), b.xxhash());
+
+        let a = Attribute::new(AttributeValue::Clip(true));
+        let b = Attribute::new(AttributeValue::Clip(true));
+
+        assert_eq!(a.xxhash(), b.xxhash());
+    }
+
+    #[traced_test]
+    #[test]
+    fn test_attributes_hash() {
+        // Should be equal
+        let a = AttributeParser::parse_attributes("width:1, height:2").unwrap();
+        let b = AttributeParser::parse_attributes("width:1, height:2").unwrap();
+        assert_eq!(a.xxhash(), b.xxhash());
+
+        // Should not be equal
+        let a = AttributeParser::parse_attributes("width:1, height:1").unwrap();
+        let b = AttributeParser::parse_attributes("width:1, height:2").unwrap();
+        assert_ne!(a.xxhash(), b.xxhash());
     }
 }

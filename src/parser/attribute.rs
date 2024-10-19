@@ -365,14 +365,9 @@ impl AttributeParser {
             Rule::attr_selected => Ok(Some(AttributeValue::Selected(Self::parse_string(
                 pair.into_inner().last().unwrap(),
             )?))),
-            Rule::attr_label => {
-                let label = Ok(Some(AttributeValue::Label(Self::parse_string(
-                    pair.into_inner().last().unwrap(),
-                )?)));
-
-                debug!("LABEL {label:#?}");
-                label
-            }
+            Rule::attr_label => Ok(Some(AttributeValue::Label(Self::parse_string(
+                pair.into_inner().last().unwrap(),
+            )?))),
             Rule::attr_toggled => Ok(Some(AttributeValue::Toggled(Self::parse_boolean(
                 pair.into_inner().last().unwrap(),
             )?))),
