@@ -89,9 +89,6 @@ where
     #[cfg(not(target_arch = "wasm32"))]
     provider_watcher: FsEventWatcher,
 
-    #[cfg(not(target_arch = "wasm32"))]
-    markup_watcher: FsEventWatcher,
-
     event_endpoint: Endpoint<Event>,
 
     event_handler: HashMap<EventKind, DynamicHandler<'static, Message<AppMessage>>>,
@@ -114,10 +111,6 @@ where
         // Initialize the filesystem watcher
         let provider_watcher = Self::init_watcher(event_endpoint.get_inlet());
 
-        #[cfg(not(target_arch = "wasm32"))]
-        // Initialize the filesystem watcher
-        let markup_watcher = Self::init_watcher(event_endpoint.get_inlet());
-
         let tree = Arc::new(Mutex::new(None));
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -130,7 +123,6 @@ where
             tree,
             #[cfg(not(target_arch = "wasm32"))]
             provider_watcher,
-            markup_watcher,
             event_endpoint,
             event_handler: HashMap::new(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -177,7 +169,7 @@ where
 
         //info!("Pending Updates: {pending:?}");
 
-        for node in pending.into_iter().rev() {
+        for _node in pending.into_iter().rev() {
             //DynamicWidget::from_node(node).unwrap();
         }
     }
@@ -449,7 +441,9 @@ where
             }
 
             Message::Command(Command::Reload) => {
-                self.reload_file();
+                if let Err(e) = self.reload_file() {
+                    error!("Failed to reload markup file: {e:#?}");
+                }
                 Task::none()
             }
         }

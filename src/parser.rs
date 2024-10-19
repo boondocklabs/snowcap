@@ -29,6 +29,7 @@ pub(crate) mod attribute;
 pub(crate) mod color;
 pub(crate) mod error;
 pub(crate) mod gradient;
+mod hash;
 
 use error::ParseError;
 
