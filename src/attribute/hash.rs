@@ -85,7 +85,7 @@ fn hash_theme<H: Hasher>(theme: &iced::Theme, state: &mut H) {
     std::mem::discriminant(theme).hash(state);
 
     match theme {
-        iced::Theme::Custom(arc) => {
+        iced::Theme::Custom(_arc) => {
             tracing::error!("Hashing of custom theme not implemented");
             todo!()
         }

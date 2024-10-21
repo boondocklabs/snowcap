@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::EventHandler;
-
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct ProviderState<M>
 where

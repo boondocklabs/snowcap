@@ -17,12 +17,7 @@ enum AttributeOption {
     Color(iced::Color),
     Gradient(iced::Gradient),
     WidthPixels(iced::Pixels),
-    HeightPixels(iced::Pixels),
     Radius(iced::border::Radius),
-    Top(f32),
-    Bottom(f32),
-    Left(f32),
-    Right(f32),
 }
 
 #[derive(Parser)]

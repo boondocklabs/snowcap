@@ -1,46 +1,37 @@
-use iced::widget::Stack;
-use tracing::info_span;
+use iced::{widget::Stack, Element};
 
 use crate::{
     attribute::{AttributeValue, Attributes},
+    dynamic_widget::DynamicWidget,
     error::ConversionError,
     message::WidgetMessage,
-    NodeRef,
+    tree_util::ChildData,
+    NodeId,
 };
 
-pub struct SnowcapStack<'a, M>
-where
-    M: std::fmt::Debug + From<WidgetMessage> + 'a,
-{
-    //contents: Arc<Vec<NodeRef<'a, SnowcapNode<'a, M>, NodeId>>>,
-    stack: Stack<'a, M>,
-}
+pub struct SnowcapStack;
 
-impl<'a, M> SnowcapStack<'a, M>
-where
-    M: std::fmt::Debug + From<WidgetMessage> + 'a,
-{
-    pub fn convert(
+impl SnowcapStack {
+    pub fn convert<M>(
         attrs: Attributes,
-        _contents: Vec<&NodeRef<M>>,
-    ) -> Result<Stack<'a, M>, ConversionError>
+        contents: Option<Vec<ChildData<'static, M>>>,
+    ) -> Result<DynamicWidget<'static, M>, ConversionError>
     where
-        //SnowcapMessage: Clone + From<Message<AppMessage>> + 'static,
-        M: Clone + std::fmt::Debug + From<WidgetMessage> + 'a,
+        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let span = info_span!("stack");
-        let _span = span.enter();
+        let mut stack = if let Some(contents) = contents {
+            let children: Vec<Element<'_, M>> = contents
+                .into_iter()
+                .filter_map(|item| {
+                    tracing::debug!("Stack Child {:?}", item);
+                    Some(item.into())
+                })
+                .collect(); // Convert each item into Element
 
-        /*
-        let children: Result<Vec<Element<'a, M>>, ConversionError> = (**contents)
-            .iter()
-            .map(|item| item.clone().into_element())
-            .collect(); // Convert each item into Element
-
-        let mut stack = Stack::with_children(children?);
-        */
-
-        let mut stack = Stack::new();
+            Stack::with_children(children)
+        } else {
+            Stack::new()
+        };
 
         for attr in attrs {
             stack = match *attr.value() {
@@ -50,6 +41,6 @@ where
             };
         }
 
-        Ok(stack)
+        Ok(DynamicWidget::default().with_widget(stack))
     }
 }

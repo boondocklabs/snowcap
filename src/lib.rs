@@ -1,5 +1,4 @@
 mod attribute;
-mod cache;
 mod connector;
 mod conversion;
 mod data;
@@ -31,7 +30,6 @@ use event::DynamicHandler;
 use event::EventHandler;
 pub use iced;
 use iced::advanced::graphics::futures::MaybeSend;
-use iced::widget::Text;
 use message::Command;
 use message::Event;
 use message::EventKind;
@@ -46,7 +44,6 @@ use tree_util::WidgetBuilder;
 use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::exit;
 use std::sync::Arc;
 
 pub use conversion::theme::SnowcapTheme;

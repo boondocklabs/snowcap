@@ -22,14 +22,14 @@ impl<'a, M> Into<Element<'a, M>> for ChildData<'a, M> {
                 Value::String(_) => todo!(),
                 Value::Number(_) => todo!(),
                 Value::Boolean(_) => todo!(),
-                Value::Array(vec) => todo!(),
-                Value::Dynamic { data, provider } => match data {
+                Value::Array(_vec) => todo!(),
+                Value::Dynamic { data, provider: _ } => match data {
                     Some(data) => match &*data {
                         crate::data::DataType::Null => todo!(),
-                        crate::data::DataType::Image(handle) => todo!(),
-                        crate::data::DataType::Svg(handle) => todo!(),
-                        crate::data::DataType::QrCode(arc) => todo!(),
-                        crate::data::DataType::Markdown(markdown_items) => todo!(),
+                        crate::data::DataType::Image(_handle) => todo!(),
+                        crate::data::DataType::Svg(_handle) => todo!(),
+                        crate::data::DataType::QrCode(_arc) => todo!(),
+                        crate::data::DataType::Markdown(_markdown_items) => todo!(),
                         crate::data::DataType::Text(_) => todo!(),
                     },
                     None => todo!(),

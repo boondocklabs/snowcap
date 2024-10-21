@@ -21,12 +21,6 @@ impl SnowcapWidget {
             .with_node_id(8989898)
     }
 
-    pub fn missing<M>() -> DynamicWidget<'static, M> {
-        DynamicWidget::default()
-            .with_widget(Text::new("Missing"))
-            .with_node_id(6767676)
-    }
-
     pub fn new<'a, M>(
         node_id: NodeId,
         name: String,
@@ -37,31 +31,6 @@ impl SnowcapWidget {
     where
         M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'a,
     {
-        // Handle any nodes with a value of Value::Data
-        // as we can infer the widget type from the DataType
-        // using .to_widget()
-
-        /*
-        if let Some(content) = content {
-            match &content.node().data().data {
-                SnowcapNodeData::Value(value) => match value {
-                    Value::Data {
-                        data: Some(data), ..
-                    } => {
-                        return DataType::to_widget(node_id, data.clone(), attrs.clone());
-                    }
-                    Value::Data { data: None, .. } => {
-                        // No data is available, so provide a placeholder widget
-                        // TODO: Some kind of spinner?
-                        return Ok(Box::new(SnowcapWidget::loading()));
-                    }
-                    _ => {}
-                },
-                _ => {}
-            }
-        }
-        */
-
         match name.as_str() {
             "image" => {
                 let mut content =
@@ -75,8 +44,8 @@ impl SnowcapWidget {
                         Value::String(_) => todo!(),
                         Value::Number(_) => todo!(),
                         Value::Boolean(_) => todo!(),
-                        Value::Array(vec) => todo!(),
-                        Value::Dynamic { data, provider } => {
+                        Value::Array(_vec) => todo!(),
+                        Value::Dynamic { data, provider: _ } => {
                             if let Some(data) = data {
                                 if let DataType::Image(handle) = &*data {
                                     Ok(DynamicWidget::default().with_widget(Image::new(handle)))
@@ -105,8 +74,8 @@ impl SnowcapWidget {
                         Value::String(_) => todo!(),
                         Value::Number(_) => todo!(),
                         Value::Boolean(_) => todo!(),
-                        Value::Array(vec) => todo!(),
-                        Value::Dynamic { data, provider } => {
+                        Value::Array(_vec) => todo!(),
+                        Value::Dynamic { data, provider: _ } => {
                             if let Some(data) = data {
                                 if let DataType::Svg(handle) = &*data {
                                     Ok(DynamicWidget::default()
@@ -134,11 +103,7 @@ impl SnowcapWidget {
 
                 if let ChildData::Value(value) = content {
                     match value {
-                        Value::String(_) => todo!(),
-                        Value::Number(_) => todo!(),
-                        Value::Boolean(_) => todo!(),
-                        Value::Array(vec) => todo!(),
-                        Value::Dynamic { data, provider } => {
+                        Value::Dynamic { data, provider: _ } => {
                             if let Some(data) = data {
                                 if let DataType::Markdown(markdown_items) = &*data {
                                     let markdown: iced::Element<'static, M> =
@@ -162,10 +127,13 @@ impl SnowcapWidget {
                                 Ok(SnowcapWidget::loading())
                             }
                         }
+                        _ => Err(ConversionError::InvalidType(
+                            "unexpected markdown {value:?}".into(),
+                        )),
                     }
                 } else {
                     Err(ConversionError::InvalidType(
-                        "Image expecting ChildData::Value".into(),
+                        "unexpected markdown {content:?} expecting ChildData::Value".into(),
                     ))
                 }
             }
@@ -181,8 +149,8 @@ impl SnowcapWidget {
                         Value::String(_) => todo!(),
                         Value::Number(_) => todo!(),
                         Value::Boolean(_) => todo!(),
-                        Value::Array(vec) => todo!(),
-                        Value::Dynamic { data, provider } => {
+                        Value::Array(_vec) => todo!(),
+                        Value::Dynamic { data, provider: _ } => {
                             if let Some(data) = data {
                                 if let DataType::QrCode(qr_data) = &*data {
                                     let mut qr = QRCode::new(qr_data.clone());
@@ -309,9 +277,9 @@ impl SnowcapWidget {
                 Ok(DynamicWidget::default().with_widget(toggler))
             }
 
-            /*
             "themer" => {
-                let content = content.ok_or(ConversionError::Missing("themer content".into()))?;
+                let mut content =
+                    content.ok_or(ConversionError::Missing("themer content".into()))?;
 
                 let theme =
                     if let Some(AttributeValue::Theme(theme)) = attrs.get(AttributeKind::Theme)? {
@@ -325,11 +293,10 @@ impl SnowcapWidget {
                         tracing::info!("Themer from {:?} to {:?}", old_theme, theme);
                         theme.as_ref().unwrap().clone()
                     },
-                    content,
+                    content.pop().unwrap(),
                 );
                 Ok(DynamicWidget::default().with_widget(themer))
             }
-            */
             "pick-list" => {
                 let mut content =
                     content.ok_or(ConversionError::Missing("pick-list content".into()))?;

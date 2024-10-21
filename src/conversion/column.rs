@@ -9,19 +9,10 @@ use crate::{
     NodeId,
 };
 
-pub struct SnowcapColumn<'a, M>
-where
-    M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
-{
-    //contents: Vec<DynamicWidget<M>>,
-    column: Column<'a, M>,
-}
+pub struct SnowcapColumn;
 
-impl<'a, M> SnowcapColumn<'a, M>
-where
-    M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
-{
-    pub fn convert(
+impl SnowcapColumn {
+    pub fn convert<M>(
         attrs: Attributes,
         contents: Option<Vec<ChildData<'static, M>>>,
     ) -> Result<DynamicWidget<'static, M>, ConversionError>

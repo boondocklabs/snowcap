@@ -3,7 +3,7 @@ use tracing::{debug, debug_span, error};
 
 use crate::{attribute::Attributes, node::SnowcapNodeData, IndexedTree, NodeId};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PatchOperation {
     SetAttributes(Option<Attributes>),
     SetData(SnowcapNodeData),
@@ -15,6 +15,7 @@ pub struct TreePatch {
     operation: PatchOperation,
 }
 
+#[allow(dead_code)]
 impl TreePatch {
     pub fn new(node_id: NodeId, operation: PatchOperation) -> Self {
         Self { node_id, operation }

@@ -12,6 +12,7 @@ use crate::{
 
 use super::EventHandler;
 
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct FsNotifyState<M>
 where
@@ -33,6 +34,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub struct FsNotifyEventHandler<M>
 where
     M: std::fmt::Debug + 'static,
@@ -80,16 +82,6 @@ where
                         // that this is the markup file itself that has changed.
 
                         tasks.push(Task::done(M::from(Command::Reload)));
-
-                        /*
-                        if let Err(e) = self.reload_file() {
-                            error!("{e:#?}");
-                        }
-
-                        // Kickoff the providers
-                        let mut provider_tasks = self.get_provider_tasks();
-                        tasks.append(&mut provider_tasks);
-                        */
                     }
                 }
                 Ok(Task::batch(tasks))

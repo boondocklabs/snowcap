@@ -1,4 +1,4 @@
-use crate::{attribute::AttributeValue, NodeId, NodeRef};
+use crate::{attribute::AttributeValue, NodeId};
 use iced::widget::Container;
 
 use crate::{
@@ -6,23 +6,14 @@ use crate::{
     message::WidgetMessage,
 };
 
-pub struct SnowcapContainer<'a, M>
-where
-    M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
-{
-    container: Container<'a, M>,
-    content: &'a NodeRef<M>,
-}
+pub struct SnowcapContainer;
 
-impl<'a, M> SnowcapContainer<'a, M>
-where
-    M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
-{
-    pub fn new(
+impl SnowcapContainer {
+    pub fn new<M>(
         attrs: Attributes,
         content: DynamicWidget<'static, M>,
         //) -> Result<Container<'a, M>, ConversionError>
-    ) -> Result<DynamicWidget<'a, M>, ConversionError>
+    ) -> Result<DynamicWidget<'static, M>, ConversionError>
     where
         M: std::fmt::Debug + From<(NodeId, WidgetMessage)>,
     {

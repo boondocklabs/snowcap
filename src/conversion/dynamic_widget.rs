@@ -6,6 +6,7 @@ use tracing::debug;
 use tracing::debug_span;
 use tracing::info;
 
+use crate::conversion::stack::SnowcapStack;
 use crate::tree_util::ChildData;
 use crate::{
     attribute::Attributes, message::WidgetMessage, node::SnowcapNodeData, ConversionError,
@@ -108,7 +109,8 @@ where
                     SnowcapNodeData::Stack => {
                         let num_children = contents.as_ref().map(|children| children.len());
                         debug!("Stack [children={num_children:?}]");
-                        todo!();
+                        SnowcapStack::convert(attrs.unwrap_or(Attributes::default()), contents)?
+                            .with_node_id(*node_id)
                     }
                     SnowcapNodeData::Value(_value) => {
                         info!("VALUE");

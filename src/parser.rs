@@ -1,9 +1,7 @@
-use std::any::type_name;
 use std::borrow::Borrow;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::process::exit;
 use std::sync::Arc;
 
 use arbutus::{NodeBuilder, NodeRef, TreeBuilder};
@@ -14,7 +12,7 @@ use pest::Parser;
 use pest_derive::Parser;
 use tracing::{debug, debug_span, error};
 
-use crate::attribute::{Attribute, Attributes};
+use crate::attribute::Attributes;
 use crate::data::provider::Provider;
 use crate::data::url_provider::UrlProvider;
 use crate::data::DataType;

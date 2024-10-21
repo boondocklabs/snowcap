@@ -1,14 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{
-    attribute::{Attribute, Attributes},
-    message::{Event, WidgetMessage},
-    node::SnowcapNodeData,
-    tree::patch::PatchOperation,
-    IndexedTree, NodeId,
-};
+use crate::{message::Event, tree::patch::PatchOperation, IndexedTree, NodeId};
 use arbutus::{Node, NodeRef};
-use tracing::{debug, debug_span, info};
+use tracing::info;
 
 use super::patch::TreePatch;
 
@@ -77,7 +71,7 @@ impl TreeDiff {
             let node_b = b.get_node(&id_b).unwrap();
 
             let cmp = node_a.node().data().compare(&node_b.node().data());
-            let patch = match cmp {
+            let _patch = match cmp {
                 crate::tree::compare::SnowcapNodeComparison::Equal => {
                     panic!("Nodes should not be equal")
                 }

@@ -2,7 +2,6 @@ use std::process::exit;
 
 use iced::{Element, Task, Theme};
 use snowcap::Snowcap;
-use tracing::error;
 use tracing_subscriber::{self, EnvFilter};
 
 pub fn main() -> iced::Result {
@@ -19,7 +18,7 @@ pub fn main() -> iced::Result {
     iced::application("Snowcap", SnowcapViewer::update, SnowcapViewer::view)
         .theme(SnowcapViewer::theme)
         .run_with(move || {
-            let mut viewer = SnowcapViewer::new(filename.clone());
+            let viewer = SnowcapViewer::new(filename.clone());
 
             match viewer {
                 Ok(mut viewer) => {
