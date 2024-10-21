@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use tracing::info;
 
 use crate::{
-    data::provider::Provider,
+    data::provider::DynProvider,
     message::{Command, Event},
     IndexedTree,
 };
@@ -19,7 +19,7 @@ where
     M: std::fmt::Debug + 'static,
 {
     tree: Arc<Mutex<Option<IndexedTree<M>>>>,
-    pub provider_map: HashMap<PathBuf, Arc<Mutex<dyn Provider>>>,
+    pub provider_map: HashMap<PathBuf, Arc<Mutex<DynProvider>>>,
 }
 
 impl<M> FsNotifyState<M>

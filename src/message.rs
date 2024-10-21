@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use strum::{EnumDiscriminants, EnumIter};
 
 use crate::{
-    data::provider::{Provider, ProviderEvent},
+    data::provider::{DynProvider, ProviderEvent},
     parser::ElementId,
     NodeId,
 };
@@ -97,7 +97,7 @@ pub enum Event {
     #[cfg(not(target_arch = "wasm32"))]
     WatchFileRequest {
         filename: PathBuf,
-        provider: Arc<Mutex<dyn Provider>>,
+        provider: Arc<Mutex<DynProvider>>,
     },
 
     Debug(String),

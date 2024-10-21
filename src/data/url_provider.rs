@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::{
-    provider::{Provider, ProviderEvent},
+    provider::{DynProvider, Provider, ProviderEvent},
     FileData,
 };
 use crate::{connector::Inlet, message::Event, parser::error::ParseError};
@@ -19,6 +19,12 @@ pub struct UrlProvider {
     inlet: Mutex<Option<Inlet<Event>>>,
 }
 
+impl std::fmt::Display for UrlProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "UrlProvider url={}", self.url)
+    }
+}
+
 impl UrlProvider {
     pub fn new(url: &str) -> Result<Self, ParseError> {
         let url = Url::parse(url)?;
@@ -34,6 +40,8 @@ impl UrlProvider {
 }
 
 impl Provider for UrlProvider {
+    type H = crate::SnowHasher;
+
     fn set_event_inlet(&self, inlet: Inlet<Event>) {
         *self.inlet.lock() = Some(inlet)
     }
@@ -77,12 +85,15 @@ impl Provider for UrlProvider {
         )
     }
 
-    fn init_task(&mut self, _this: Arc<Mutex<dyn Provider>>, node_id: NodeId) -> Task<Event> {
+    fn init_task(&mut self, _this: Arc<Mutex<DynProvider>>, node_id: NodeId) -> Task<Event> {
         self.node_id = Some(node_id);
         self.update_task()
     }
 
     fn set_node_id(&mut self, node_id: NodeId) {
         self.node_id = Some(node_id);
+    }
+    fn hash_source(&self, hasher: &mut dyn std::hash::Hasher) {
+        hasher.write(self.url.as_str().as_bytes());
     }
 }

@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -6,14 +5,13 @@ use std::sync::Arc;
 
 use arbutus::{NodeBuilder, NodeRef, TreeBuilder};
 use attribute::AttributeParser;
-use parking_lot::Mutex;
 use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 use pest_derive::Parser;
 use tracing::{debug, debug_span, error};
+use value::ValueKind;
 
 use crate::attribute::Attributes;
-use crate::data::provider::Provider;
 use crate::data::url_provider::UrlProvider;
 use crate::data::DataType;
 
@@ -28,14 +26,11 @@ pub(crate) mod color;
 pub(crate) mod error;
 pub(crate) mod gradient;
 mod hash;
+pub(crate) mod value;
 
-use error::ParseError;
+pub use value::Value;
 
-#[derive(Parser)]
-#[grammar = "snowcap.pest"]
-pub struct SnowcapParser<'a, M> {
-    _phantom: PhantomData<&'a M>,
-}
+use error::{ParseError, ParseErrorContext};
 
 type SnowNodeBuilder<'a, M> = NodeBuilder<
     'a,
@@ -49,7 +44,24 @@ type SnowNodeBuilder<'a, M> = NodeBuilder<
 /// Snowcap parser
 ///
 /// This parser uses Pest grammar to parse snowcap text into TreeNodes
-impl<'a, M> SnowcapParser<'a, M>
+
+#[derive(Parser)]
+#[grammar = "snowcap.pest"]
+pub struct SnowcapParser<M> {
+    context: ParserContext,
+    _phantom: PhantomData<M>,
+}
+
+impl<M> Default for SnowcapParser<M> {
+    fn default() -> Self {
+        Self {
+            context: ParserContext::default(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<M> SnowcapParser<M>
 where
     M: Clone + std::fmt::Debug + From<Event> + From<(NodeId, WidgetMessage)>,
 {
@@ -65,7 +77,7 @@ where
     pub fn parse_file(filename: &Path) -> Result<Tree<M>, crate::Error> {
         tracing::info!("Parsing file {filename:?}");
         let data = std::fs::read_to_string(filename).expect("cannot read file");
-        SnowcapParser::<M>::parse_memory(data.as_str())
+        SnowcapParser::<M>::parse_memory(data.as_str()).map_err(|e| crate::Error::Parse(e))
     }
 
     /// Parse Snowcap string into a `TreeNode`.
@@ -77,11 +89,23 @@ where
     /// # Returns
     ///
     /// A `Result` containing the root `TreeNode`, or an error if parsing fails.
-    pub fn parse_memory(data: &str) -> Result<Tree<M>, crate::Error> {
+    pub fn parse_memory(data: &str) -> Result<Tree<M>, ParseErrorContext> {
         debug_span!("parser").in_scope(|| {
-            let markup = SnowcapParser::<M>::parse(Rule::markup, data)?
+            let markup = SnowcapParser::<M>::parse(Rule::markup, data)
+                .map_err(|e| {
+                    let mut context = ParserContext::default();
+                    match e.line_col {
+                        pest::error::LineColLocation::Pos(pos) => context.location = pos,
+                        pest::error::LineColLocation::Span(_, _) => todo!(),
+                    }
+                    context.input = data.into();
+                    ParseErrorContext::new(context, ParseError::from(e))
+                })?
                 .next()
                 .unwrap();
+
+            // Initialize parser context
+            let mut parser = Self::default().context((&markup).into());
 
             let mut builder = TreeBuilder::<
                 SnowcapNode<M>,
@@ -93,17 +117,23 @@ where
 
             let root = SnowcapNode::<M>::new(SnowcapNodeData::Root);
 
-            builder = builder.root(root, |root| {
-                let _nodes = SnowcapParser::<M>::parse_pair(markup, root)?;
-                Ok(())
-            })?;
+            builder = builder
+                .root(root, |root| parser.parse_pair(markup, root))
+                .map_err(|e| ParseErrorContext::new(parser.context.clone(), e))?;
 
             debug!("Parsing complete");
 
-            let tree = builder.done()?;
+            let tree = builder
+                .done()
+                .map_err(|e| ParseErrorContext::new(parser.context.clone(), e))?;
 
             Ok(tree.unwrap())
         })
+    }
+
+    pub fn context(mut self, context: ParserContext) -> Self {
+        self.context = context;
+        self
     }
 
     fn parse_attributes(pair: Pair<Rule>) -> Result<Attributes, ParseError> {
@@ -111,64 +141,72 @@ where
     }
 
     fn parse_array(pair: Pair<Rule>) -> Result<Value, ParseError> {
-        let values: Result<Vec<Value>, ParseError> =
-            pair.into_inner().map(|i| Self::parse_value(i)).collect();
+        let context = ParserContext::from(&pair);
 
-        Ok(Value::Array(values?))
+        let values: Result<Vec<Value>, ParseError> = pair
+            .into_inner()
+            .map(|i| Self::parse_value(i.clone()).map(|v| v.with_context(ParserContext::from(&i))))
+            .collect();
+
+        Ok(Value::new_array(values?).with_context(context))
     }
 
     fn parse_value(pair: Pair<Rule>) -> Result<Value, ParseError> {
-        debug!("value {:?} {}", pair.as_rule(), pair.as_str());
-        match pair.as_rule() {
-            Rule::number => Ok(Value::Number(pair.as_str().parse().unwrap())),
-            Rule::string => Ok(Value::String(pair.into_inner().as_str().into())),
-            Rule::boolean => Ok(Value::Boolean(pair.as_str().parse().unwrap())),
-            Rule::data_source => {
-                let mut inner = pair.into_inner();
-                let name = inner.next().unwrap().as_str().to_string();
-                let value = inner
-                    .next()
-                    .expect("Expected data source value")
-                    .into_inner()
-                    .as_str()
-                    .to_string();
+        let context = ParserContext::from(&pair);
 
-                match name.as_str() {
-                    "qr" => {
-                        let data = iced::widget::qr_code::Data::new(value)?;
-                        let data = Arc::new(DataType::QrCode(Arc::new(data)));
-                        return Ok(Value::Dynamic {
-                            data: Some(data),
-                            provider: None,
-                        });
+        let res = {
+            debug!("value {:?} {}", pair.as_rule(), pair.as_str());
+            match pair.as_rule() {
+                Rule::number => {
+                    Ok(Value::new_float(pair.as_str().parse().unwrap()).with_context(context))
+                }
+                Rule::string => {
+                    Ok(Value::new_string(pair.into_inner().as_str().into()).with_context(context))
+                }
+                Rule::boolean => {
+                    Ok(Value::new_bool(pair.as_str().parse().unwrap()).with_context(context))
+                }
+                Rule::data_source => {
+                    let mut inner = pair.into_inner();
+                    let name = inner.next().unwrap().as_str().to_string();
+                    let value = inner
+                        .next()
+                        .expect("Expected data source value")
+                        .into_inner()
+                        .as_str()
+                        .to_string();
+
+                    match name.as_str() {
+                        "qr" => {
+                            let data = iced::widget::qr_code::Data::new(value)?;
+                            let data = DataType::QrCode(Arc::new(data));
+                            Ok(Value::new_data(data).with_context(context))
+                        }
+                        "url" => {
+                            let provider = UrlProvider::new(value.as_str())?;
+                            Ok(Value::new_provider(provider).with_context(context))
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        "file" => {
+                            let path = &PathBuf::from(value.clone());
+                            let provider = FileProvider::new(path)?;
+                            Ok(Value::new_provider(provider).with_context(context))
+                        }
+                        _ => return Err(ParseError::Unhandled("Missing data or provider".into())),
                     }
-                    "url" => {
-                        let provider = UrlProvider::new(value.as_str())?;
-                        return Ok(Value::Dynamic {
-                            data: None,
-                            provider: Some(Arc::new(Mutex::new(provider))),
-                        });
-                    }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    "file" => {
-                        let path = &PathBuf::from(value.clone());
-                        let provider = FileProvider::new(path).unwrap();
-                        return Ok(Value::Dynamic {
-                            data: None,
-                            provider: Some(Arc::new(Mutex::new(provider))),
-                        });
-                    }
-                    _ => return Err(ParseError::Unhandled("Missing data or provider".into())),
-                };
+                }
+                _ => Err(ParseError::Unhandled(format!(
+                    "AttributeValue {:?}",
+                    pair.as_rule()
+                ))),
             }
-            _ => Err(ParseError::Unhandled(format!(
-                "AttributeValue {:?}",
-                pair.as_rule()
-            ))),
-        }
+        };
+
+        res.map_err(|e| e)
     }
 
     fn parse_container<'b>(
+        &mut self,
         pair: Pair<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
     ) -> Result<(), ParseError> {
@@ -178,6 +216,7 @@ where
         let mut attrs: Option<Attributes> = None;
 
         for pair in inner {
+            self.context = ParserContext::from(&pair);
             match pair.as_rule() {
                 Rule::id => {
                     let container_id = pair.into_inner().as_str();
@@ -190,7 +229,7 @@ where
                         .with_attrs(attrs);
 
                     builder.child(node, |container| {
-                        Self::parse_pair(pair, container)?;
+                        self.parse_pair(pair, container)?;
                         Ok(())
                     })?;
 
@@ -208,6 +247,7 @@ where
     }
 
     fn parse_element_list<'b>(
+        &mut self,
         pairs: Pairs<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
     ) -> Result<(ElementIdOption, Attributes), ParseError> {
@@ -215,6 +255,7 @@ where
         let mut id: Option<String> = None;
 
         for pair in pairs {
+            self.context = ParserContext::from(&pair);
             match &pair.as_rule() {
                 Rule::id => {
                     let list_id = pair.into_inner().as_str();
@@ -225,7 +266,7 @@ where
                     attrs = Self::parse_attributes(pair)?;
                 }
                 _ => {
-                    SnowcapParser::<M>::parse_pair(pair, builder)?;
+                    self.parse_pair(pair, builder)?;
                 }
             }
         }
@@ -234,6 +275,7 @@ where
     }
 
     fn parse_row<'b>(
+        &mut self,
         pair: Pair<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
     ) -> Result<(), ParseError> {
@@ -241,7 +283,7 @@ where
 
         builder.child(node, |row| {
             debug!("Parsing column contents");
-            let (id, attrs) = Self::parse_element_list(pair.into_inner(), row)?;
+            let (id, attrs) = self.parse_element_list(pair.into_inner(), row)?;
             row.node_mut()
                 .with_data_mut(|mut data| {
                     data.element_id = id;
@@ -254,6 +296,7 @@ where
     }
 
     fn parse_column<'b>(
+        &mut self,
         pair: Pair<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
     ) -> Result<(), ParseError> {
@@ -261,7 +304,7 @@ where
 
         builder.child(node, |col| {
             debug!("Parsing column contents");
-            let (id, attrs) = Self::parse_element_list(pair.into_inner(), col)?;
+            let (id, attrs) = self.parse_element_list(pair.into_inner(), col)?;
             col.node_mut()
                 .with_data_mut(|mut data| {
                     data.element_id = id;
@@ -274,6 +317,7 @@ where
     }
 
     fn parse_stack<'b>(
+        &mut self,
         pair: Pair<Rule>,
         builder: &'b mut SnowNodeBuilder<'_, M>,
     ) -> Result<(), ParseError> {
@@ -281,7 +325,7 @@ where
 
         builder.child(node, |stack| {
             debug!("Parsing column contents");
-            let (id, attrs) = Self::parse_element_list(pair.into_inner(), stack)?;
+            let (id, attrs) = self.parse_element_list(pair.into_inner(), stack)?;
             stack
                 .node_mut()
                 .with_data_mut(|mut data| {
@@ -295,6 +339,7 @@ where
     }
 
     fn parse_widget<'b>(
+        &mut self,
         pair: Pair<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
     ) -> Result<(), ParseError> {
@@ -305,6 +350,7 @@ where
 
         builder.child(node, |widget| {
             for pair in inner {
+                self.context = ParserContext::from(&pair);
                 match pair.as_rule() {
                     Rule::id => {
                         let widget_id = pair.into_inner().as_str();
@@ -339,10 +385,10 @@ where
                         widget.child(node, |_| Ok(()))?;
                     }
                     Rule::widget => {
-                        Self::parse_pair(pair, widget)?;
+                        self.parse_pair(pair, widget)?;
                     }
                     Rule::container => {
-                        Self::parse_container(pair, widget)?;
+                        self.parse_container(pair, widget)?;
                     }
                     _ => {
                         error!("Unhandled element rule {:?}", pair.as_rule())
@@ -356,17 +402,19 @@ where
     }
 
     pub(crate) fn parse_pair<'b>(
+        &mut self,
         pair: Pair<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
     ) -> Result<(), ParseError> {
+        self.context = (&pair).into();
+
         match pair.as_rule() {
-            Rule::container => Self::parse_container(pair, builder),
-            Rule::row => Self::parse_row(pair, builder),
-            Rule::column => Self::parse_column(pair, builder),
-            Rule::stack => Self::parse_stack(pair, builder),
-            Rule::widget => Self::parse_widget(pair, builder),
-            //Rule::element_value => Self::parse_pair(pair.into_inner().last().unwrap()),
-            Rule::element_value => Self::parse_pair(pair.into_inner().last().unwrap(), builder),
+            Rule::container => self.parse_container(pair, builder),
+            Rule::row => self.parse_row(pair, builder),
+            Rule::column => self.parse_column(pair, builder),
+            Rule::stack => self.parse_stack(pair, builder),
+            Rule::widget => self.parse_widget(pair, builder),
+            Rule::element_value => self.parse_pair(pair.into_inner().last().unwrap(), builder),
             _ => panic!("Unhandled {pair:?}"),
         }?;
 
@@ -374,69 +422,19 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Value {
-    String(String),
-    Number(f64),
-    Boolean(bool),
-    Array(Vec<Value>),
-    Dynamic {
-        data: Option<Arc<DataType>>,
-        provider: Option<Arc<Mutex<dyn Provider>>>,
-    },
+/// Context information stored in tree nodes by the parser
+/// to provide location information from the parsed markup
+#[derive(Clone, Debug, Default)]
+pub struct ParserContext {
+    input: String,
+    location: (usize, usize),
 }
 
-impl std::fmt::Display for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::String(s) => f.write_str(s),
-            Value::Number(num) => f.write_fmt(format_args!("{}", num)),
-            Value::Boolean(b) => f.write_fmt(format_args!("{}", b)),
-            Value::Array(_vec) => f.write_str("[vec...]"),
-            Value::Dynamic { provider, .. } => write!(f, "[Dynamic provider={provider:?}]"),
-        }
-    }
-}
-
-/*
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            // Compare `String` variants
-            (Value::String(a), Value::String(b)) => a == b,
-            // Compare `Number` variants
-            (Value::Number(a), Value::Number(b)) => a == b,
-            // Compare `Boolean` variants
-            (Value::Boolean(a), Value::Boolean(b)) => a == b,
-            // Compare `Null` variants
-            // Compare `Array` variants (recursively compares each element)
-            (Value::Array(a), Value::Array(b)) => a == b,
-
-            (
-                Value::Dynamic {
-                    data: da,
-                    provider: pa,
-                },
-                Value::Dynamic {
-                    data: db,
-                    provider: pb,
-                },
-            ) => {
-                // TODO: Fix comparison between providers
-                true
-            }
-
-            _ => true,
-        }
-    }
-}
-*/
-
-impl Borrow<String> for Value {
-    fn borrow(&self) -> &String {
-        match self {
-            Value::String(s) => &s,
-            _ => panic!("Cannot borrow string for non-string typed value"),
+impl From<&Pair<'_, Rule>> for ParserContext {
+    fn from(pair: &Pair<'_, Rule>) -> Self {
+        ParserContext {
+            input: pair.get_input().into(),
+            location: pair.line_col(),
         }
     }
 }

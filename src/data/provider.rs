@@ -11,11 +11,16 @@ use url::Url;
 
 use super::FileData;
 
-pub trait Provider: std::fmt::Debug + MaybeSend + MaybeSync {
-    fn init_task(&mut self, this: Arc<Mutex<dyn Provider>>, node_id: NodeId) -> Task<Event>;
+pub(crate) type DynProvider = dyn Provider<H = crate::SnowHasher>;
+
+pub trait Provider: std::fmt::Debug + std::fmt::Display + MaybeSend + MaybeSync {
+    type H: std::hash::Hasher;
+
+    fn init_task(&mut self, this: Arc<Mutex<DynProvider>>, node_id: NodeId) -> Task<Event>;
     fn set_node_id(&mut self, node_id: NodeId);
     fn set_event_inlet(&self, inlet: Inlet<Event>);
     fn update_task(&self) -> Task<Event>;
+    fn hash_source(&self, hasher: &mut dyn std::hash::Hasher);
 }
 
 #[derive(Debug, Clone)]

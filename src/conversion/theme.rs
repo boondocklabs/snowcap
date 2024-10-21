@@ -97,6 +97,7 @@ impl TryFrom<&str> for SnowcapTheme {
     }
 }
 
+/*
 impl TryInto<Theme> for &Value {
     type Error = ConversionError;
 
@@ -141,6 +142,7 @@ impl TryInto<Theme> for &Value {
         Ok(wrapped_theme.0)
     }
 }
+*/
 
 /*
 impl TryInto<Theme> for &Attribute {

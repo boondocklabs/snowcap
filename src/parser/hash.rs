@@ -1,4 +1,4 @@
-use super::Value;
+use super::{Value, ValueKind};
 use crate::data::DataType;
 use tracing::warn;
 
@@ -23,22 +23,30 @@ impl std::hash::Hash for DataType {
     }
 }
 
-impl std::hash::Hash for Value {
+impl std::hash::Hash for ValueKind {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
 
         match self {
-            Value::String(s) => s.hash(state),
-            Value::Number(num) => state.write(&num.to_ne_bytes()),
-            Value::Boolean(b) => b.hash(state),
-            Value::Array(vec) => vec.hash(state),
-            Value::Dynamic {
-                data: _,
-                provider: _,
-            } => {
+            ValueKind::String(s) => s.hash(state),
+            ValueKind::Float(num) => state.write(&num.to_ne_bytes()),
+            ValueKind::Integer(num) => state.write(&num.to_ne_bytes()),
+            ValueKind::Boolean(b) => b.hash(state),
+            ValueKind::Array(vec) => vec.hash(state),
+            ValueKind::Dynamic { data: _, provider } => {
                 //data.hash(state);
-                // TODO: Hash provider state
+
+                if let Some(provider) = provider {
+                    let provider = provider.lock();
+                    provider.hash_source(state);
+                }
             }
         }
+    }
+}
+
+impl std::hash::Hash for Value {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (&**self).hash(state)
     }
 }

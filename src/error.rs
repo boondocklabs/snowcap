@@ -4,8 +4,7 @@ use std::string::FromUtf8Error;
 use thiserror::Error;
 
 use crate::attribute::Attribute;
-use crate::parser::error::ParseError;
-use crate::parser::Rule;
+use crate::parser::error::ParseErrorContext;
 
 #[derive(Error, Debug)]
 pub enum SyncError {
@@ -31,7 +30,7 @@ pub enum ConversionError {
     Unknown(String),
 
     #[error(transparent)]
-    Parse(#[from] ParseError),
+    Parse(#[from] ParseErrorContext),
 
     #[error("downcast {0}")]
     Downcast(String),
@@ -46,7 +45,7 @@ pub enum ConversionError {
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    Parse(#[from] ParseError),
+    Parse(#[from] ParseErrorContext),
 
     #[error(transparent)]
     Conversion(#[from] ConversionError),
@@ -56,9 +55,6 @@ pub enum Error {
 
     #[error("Required attribute {0} missing")]
     MissingAttribute(String),
-
-    #[error(transparent)]
-    Pest(#[from] pest::error::Error<Rule>),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),

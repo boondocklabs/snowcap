@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::NodeRef;
 use crate::{message::Event, tree::patch::PatchOperation, IndexedTree, NodeId};
-use arbutus::{Node, NodeRef};
+use arbutus::{Node as _, NodeRef as _};
 use tracing::info;
 
 use super::patch::TreePatch;
@@ -37,17 +38,22 @@ impl TreeDiff {
             .map(|node_hash| node_hash.clone())
             .collect();
 
-        //info!("SetA:\n{set_a:#?}");
-        //info!("SetB:\n{set_b:#?}");
+        let mut va = set_a.iter().collect::<Vec<&u64>>();
+        va.sort();
+        let mut vb = set_b.iter().collect::<Vec<&u64>>();
+        vb.sort();
+
+        info!("SetA:\n{:#?}", va);
+        info!("SetB:\n{:#?}", vb);
 
         // Nodes in A which don't exist in B
-        let mut diff_a: HashSet<NodeId> = set_a
+        let diff_a: HashSet<NodeId> = set_a
             .difference(&set_b)
             .map(|h| inverted_index_a[h])
             .collect();
 
         // Nodes in B which don't exist in A
-        let mut diff_b: HashSet<NodeId> = set_b
+        let diff_b: HashSet<NodeId> = set_b
             .difference(&set_a)
             .map(|h| inverted_index_b[h])
             .collect();
@@ -57,47 +63,31 @@ impl TreeDiff {
 
         let mut patches = Vec::<TreePatch>::new();
 
+        info!("--- Tree A: ---\n");
+        info!("{}", a.root());
         for id in &diff_a {
-            let node = a.get_node(id);
-            info!("{node:#?}");
+            if let Some(node) = a.get_node(id) {
+                info!("{node}");
+            }
         }
+        info!("---------------\n");
 
-        // If we have exactly one different node in each tree, issue an op to update the node
-        if diff_a.len() == 1 && diff_b.len() == 1 {
-            let id_a = diff_a.drain().last().unwrap();
-            let id_b = diff_b.drain().last().unwrap();
+        info!("--- Tree B: ---\n");
+        info!("{}", b.root());
+        for id in &diff_b {
+            if let Some(node) = b.get_node(id) {
+                info!("{node}");
+            }
+        }
+        info!("---------------\n");
 
-            let node_a = a.get_node(&id_a).unwrap();
-            let node_b = b.get_node(&id_b).unwrap();
+        let intersect = diff_a.intersection(&diff_b);
+        for id in intersect {
+            info!("Patch node {}", id);
+            let node_a = a.get_node(id).unwrap();
+            let node_b = b.get_node(id).unwrap();
 
-            let cmp = node_a.node().data().compare(&node_b.node().data());
-            let _patch = match cmp {
-                crate::tree::compare::SnowcapNodeComparison::Equal => {
-                    panic!("Nodes should not be equal")
-                }
-                crate::tree::compare::SnowcapNodeComparison::DataDiffer => {
-                    patches.push(TreePatch::new(
-                        id_a,
-                        PatchOperation::SetData(node_b.node().data().data.clone()),
-                    ));
-                }
-                crate::tree::compare::SnowcapNodeComparison::AttributeDiffer => {
-                    patches.push(TreePatch::new(
-                        id_a,
-                        PatchOperation::SetAttributes(node_b.node().data().attrs.clone()),
-                    ));
-                }
-                crate::tree::compare::SnowcapNodeComparison::BothDiffer => {
-                    patches.push(TreePatch::new(
-                        id_a,
-                        PatchOperation::SetAttributes(node_b.node().data().attrs.clone()),
-                    ));
-                    patches.push(TreePatch::new(
-                        id_a,
-                        PatchOperation::SetData(node_b.node().data().data.clone()),
-                    ));
-                }
-            };
+            patches.extend(Self::build_patch(node_a, node_b));
         }
 
         info!("PATCHES {patches:#?}");
@@ -124,6 +114,45 @@ impl TreeDiff {
             }
         }
         */
+
+        patches
+    }
+
+    fn build_patch<'a, M>(dest: &NodeRef<M>, source: &NodeRef<M>) -> Vec<TreePatch>
+    where
+        M: Clone + std::fmt::Debug + From<Event> + 'a,
+    {
+        let dest_id = dest.node().id().clone();
+        let mut patches = Vec::<TreePatch>::new();
+
+        let cmp = dest.node().data().compare(&source.node().data());
+        match cmp {
+            crate::tree::compare::SnowcapNodeComparison::Equal => {
+                panic!("Nodes should not be equal")
+            }
+            crate::tree::compare::SnowcapNodeComparison::DataDiffer => {
+                patches.push(TreePatch::new(
+                    dest_id,
+                    PatchOperation::SetData(source.node().data().data.clone()),
+                ));
+            }
+            crate::tree::compare::SnowcapNodeComparison::AttributeDiffer => {
+                patches.push(TreePatch::new(
+                    dest_id,
+                    PatchOperation::SetAttributes(source.node().data().attrs.clone()),
+                ));
+            }
+            crate::tree::compare::SnowcapNodeComparison::BothDiffer => {
+                patches.push(TreePatch::new(
+                    dest_id,
+                    PatchOperation::SetAttributes(source.node().data().attrs.clone()),
+                ));
+                patches.push(TreePatch::new(
+                    dest_id,
+                    PatchOperation::SetData(source.node().data().data.clone()),
+                ));
+            }
+        };
 
         patches
     }

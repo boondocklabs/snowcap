@@ -4,8 +4,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use tracing::{debug, info};
 
 use crate::{
-    dynamic_widget::DynamicWidget, message::WidgetMessage, ConversionError, IndexedTree, NodeId,
-    NodeRef, Value,
+    data::DataType, dynamic_widget::DynamicWidget, message::WidgetMessage,
+    parser::value::ValueKind, ConversionError, IndexedTree, NodeId, NodeRef, Value,
 };
 
 #[derive(Debug)]
@@ -18,19 +18,20 @@ impl<'a, M> Into<Element<'a, M>> for ChildData<'a, M> {
     fn into(self) -> Element<'a, M> {
         match self {
             ChildData::Widget(dynamic_widget) => dynamic_widget.into_element(),
-            ChildData::Value(value) => match value {
-                Value::String(_) => todo!(),
-                Value::Number(_) => todo!(),
-                Value::Boolean(_) => todo!(),
-                Value::Array(_vec) => todo!(),
-                Value::Dynamic { data, provider: _ } => match data {
-                    Some(data) => match &*data {
-                        crate::data::DataType::Null => todo!(),
-                        crate::data::DataType::Image(_handle) => todo!(),
-                        crate::data::DataType::Svg(_handle) => todo!(),
-                        crate::data::DataType::QrCode(_arc) => todo!(),
-                        crate::data::DataType::Markdown(_markdown_items) => todo!(),
-                        crate::data::DataType::Text(_) => todo!(),
+            ChildData::Value(value) => match &*value {
+                ValueKind::String(_) => todo!(),
+                ValueKind::Float(_) => todo!(),
+                ValueKind::Integer(_) => todo!(),
+                ValueKind::Boolean(_) => todo!(),
+                ValueKind::Array(_vec) => todo!(),
+                ValueKind::Dynamic { data, provider: _ } => match data {
+                    Some(data) => match &**data {
+                        DataType::Null => todo!(),
+                        DataType::Image(_handle) => todo!(),
+                        DataType::Svg(_handle) => todo!(),
+                        DataType::QrCode(_arc) => todo!(),
+                        DataType::Markdown(_markdown_items) => todo!(),
+                        DataType::Text(_) => todo!(),
                     },
                     None => todo!(),
                 },
@@ -93,8 +94,6 @@ where
             let have_children = self.children.get(&node_id).map(|v| v.len()).unwrap_or(0);
 
             if expected_children != have_children {
-                info!("Deferring node {node_id}");
-
                 // Put the node into the next depth queue, as not all dependencies
                 // have been resolved yet.
 
@@ -119,10 +118,7 @@ where
                         DynamicWidget::builder(node.clone(), children)?.with_node_id(node_id);
                     Some(ChildData::Widget(widget))
                 }
-                crate::node::SnowcapNodeData::Value(value) => {
-                    info!("Node {node_id} value {value}");
-                    Some(ChildData::Value(value.clone()))
-                }
+                crate::node::SnowcapNodeData::Value(value) => Some(ChildData::Value(value.clone())),
                 crate::node::SnowcapNodeData::Root => {
                     // Root widget is in the children queue,
                     // built from the previous depth pass
@@ -160,7 +156,6 @@ where
             }
 
             if queue.is_empty() {
-                info!("Moving to next depth");
                 queue.append(&mut next);
             }
         }

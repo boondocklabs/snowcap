@@ -29,7 +29,7 @@ pub fn main() -> iced::Result {
                     )
                 }
                 Err(err) => {
-                    tracing::error!("{:#?}", err);
+                    tracing::error!("{}", err);
                     exit(-1)
                 }
             }

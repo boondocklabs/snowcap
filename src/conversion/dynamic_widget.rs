@@ -7,6 +7,7 @@ use tracing::debug_span;
 use tracing::info;
 
 use crate::conversion::stack::SnowcapStack;
+use crate::parser::value::ValueKind;
 use crate::tree_util::ChildData;
 use crate::{
     attribute::Attributes, message::WidgetMessage, node::SnowcapNodeData, ConversionError,
@@ -29,12 +30,13 @@ where
             if let Some(child) = children.pop() {
                 match child {
                     ChildData::Widget(dynamic_widget) => Ok(Some(dynamic_widget)),
-                    ChildData::Value(value) => match value {
-                        crate::Value::String(_) => todo!(),
-                        crate::Value::Number(_) => todo!(),
-                        crate::Value::Boolean(_) => todo!(),
-                        crate::Value::Array(_vec) => todo!(),
-                        crate::Value::Dynamic { data: _, provider } => {
+                    ChildData::Value(value) => match &*value {
+                        ValueKind::String(_) => todo!(),
+                        ValueKind::Float(_) => todo!(),
+                        ValueKind::Integer(_) => todo!(),
+                        ValueKind::Boolean(_) => todo!(),
+                        ValueKind::Array(_vec) => todo!(),
+                        ValueKind::Dynamic { data: _, provider } => {
                             info!("RENDER DATA FOR {provider:?}");
                             Ok(Some(SnowcapWidget::loading()))
                         }

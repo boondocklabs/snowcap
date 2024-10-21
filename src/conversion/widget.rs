@@ -1,8 +1,9 @@
 use crate::attribute::{AttributeKind, AttributeValue};
 use crate::data::DataType;
+use crate::parser::value::ValueKind;
 use crate::tree_util::ChildData;
 use crate::util::ElementWrapper;
-use crate::{NodeId, Value};
+use crate::NodeId;
 use iced::widget::{Button, PickList, QRCode, Rule, Space, Svg, Themer, Toggler};
 use iced::widget::{Image, Text};
 use tracing::warn;
@@ -40,14 +41,15 @@ impl SnowcapWidget {
                     .ok_or(ConversionError::Missing("image content".into()))?;
 
                 if let ChildData::Value(value) = content {
-                    match value {
-                        Value::String(_) => todo!(),
-                        Value::Number(_) => todo!(),
-                        Value::Boolean(_) => todo!(),
-                        Value::Array(_vec) => todo!(),
-                        Value::Dynamic { data, provider: _ } => {
+                    match value.inner() {
+                        ValueKind::String(_) => todo!(),
+                        ValueKind::Float(_) => todo!(),
+                        ValueKind::Integer(_) => todo!(),
+                        ValueKind::Boolean(_) => todo!(),
+                        ValueKind::Array(_vec) => todo!(),
+                        ValueKind::Dynamic { data, provider: _ } => {
                             if let Some(data) = data {
-                                if let DataType::Image(handle) = &*data {
+                                if let DataType::Image(handle) = &**data {
                                     Ok(DynamicWidget::default().with_widget(Image::new(handle)))
                                 } else {
                                     Ok(SnowcapWidget::loading())
@@ -70,14 +72,15 @@ impl SnowcapWidget {
                     .ok_or(ConversionError::Missing("svg content".into()))?;
 
                 if let ChildData::Value(value) = content {
-                    match value {
-                        Value::String(_) => todo!(),
-                        Value::Number(_) => todo!(),
-                        Value::Boolean(_) => todo!(),
-                        Value::Array(_vec) => todo!(),
-                        Value::Dynamic { data, provider: _ } => {
+                    match value.inner() {
+                        ValueKind::String(_) => todo!(),
+                        ValueKind::Float(_) => todo!(),
+                        ValueKind::Integer(_) => todo!(),
+                        ValueKind::Boolean(_) => todo!(),
+                        ValueKind::Array(_vec) => todo!(),
+                        ValueKind::Dynamic { data, provider: _ } => {
                             if let Some(data) = data {
-                                if let DataType::Svg(handle) = &*data {
+                                if let DataType::Svg(handle) = &**data {
                                     Ok(DynamicWidget::default()
                                         .with_widget(Svg::new(handle.clone())))
                                 } else {
@@ -102,10 +105,10 @@ impl SnowcapWidget {
                     .ok_or(ConversionError::Missing("markdown content".into()))?;
 
                 if let ChildData::Value(value) = content {
-                    match value {
-                        Value::Dynamic { data, provider: _ } => {
+                    match value.inner() {
+                        ValueKind::Dynamic { data, provider: _ } => {
                             if let Some(data) = data {
-                                if let DataType::Markdown(markdown_items) = &*data {
+                                if let DataType::Markdown(markdown_items) = &**data {
                                     let markdown: iced::Element<'static, M> =
                                         iced::widget::markdown(
                                             markdown_items.into_iter(),
@@ -145,47 +148,40 @@ impl SnowcapWidget {
                     .ok_or(ConversionError::Missing("qr-code content".into()))?;
 
                 if let ChildData::Value(value) = content {
-                    match value {
-                        Value::String(_) => todo!(),
-                        Value::Number(_) => todo!(),
-                        Value::Boolean(_) => todo!(),
-                        Value::Array(_vec) => todo!(),
-                        Value::Dynamic { data, provider: _ } => {
-                            if let Some(data) = data {
-                                if let DataType::QrCode(qr_data) = &*data {
-                                    let mut qr = QRCode::new(qr_data.clone());
+                    let data = value
+                        .dynamic()?
+                        .clone()
+                        .ok_or(ConversionError::Missing("qr data".into()))?;
 
-                                    for attr in attrs {
-                                        qr = match *attr {
-                                            crate::attribute::AttributeValue::CellSize(pixels) => {
-                                                qr.cell_size(pixels)
-                                            }
-                                            _ => {
-                                                warn!("Unsupported QRCode attribute {:?}", attr);
-                                                qr
-                                            }
-                                        };
-                                    }
+                    if let DataType::QrCode(qr_data) = &*data {
+                        let mut qr = QRCode::new(qr_data.clone());
 
-                                    return Ok(DynamicWidget::default().with_widget(qr));
-                                } else {
-                                    Ok(SnowcapWidget::loading())
+                        for attr in attrs {
+                            qr = match *attr {
+                                crate::attribute::AttributeValue::CellSize(pixels) => {
+                                    qr.cell_size(pixels)
                                 }
-                            } else {
-                                Ok(SnowcapWidget::loading())
-                            }
+                                _ => {
+                                    warn!("Unsupported QRCode attribute {:?}", attr);
+                                    qr
+                                }
+                            };
                         }
+
+                        Ok(DynamicWidget::default().with_widget(qr))
+                    } else {
+                        Ok(SnowcapWidget::loading())
                     }
                 } else {
                     Err(ConversionError::InvalidType(
-                        "Image expecting ChildData::Value".into(),
+                        "expecting ChildData::Value".into(),
                     ))
                 }
             }
             "text" => {
                 let mut content = content.ok_or(ConversionError::Missing("text content".into()))?;
                 let mut text = if let Some(ChildData::Value(value)) = content.pop() {
-                    Text::new(&value)
+                    Text::new(value.inner())
                 } else {
                     Text::new("X")
                 };
@@ -301,7 +297,7 @@ impl SnowcapWidget {
                 let mut content =
                     content.ok_or(ConversionError::Missing("pick-list content".into()))?;
 
-                if let Some(ChildData::Value(Value::Array(values))) = content.pop() {
+                if let Some(ChildData::Value(value)) = content.pop() {
                     let current = if let Some(AttributeValue::Selected(selected)) =
                         attrs.get(AttributeKind::Selected)?
                     {
@@ -310,7 +306,8 @@ impl SnowcapWidget {
                         None
                     };
 
-                    let values: Vec<String> = values.into_iter().map(|x| x.to_string()).collect();
+                    let values: Vec<String> =
+                        value.array()?.into_iter().map(|x| x.to_string()).collect();
 
                     let _attrs = attrs.clone();
                     let picklist = PickList::new(values, current, move |selected| {

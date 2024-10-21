@@ -35,6 +35,7 @@ url = "2.5.2"
 xxhash-rust = { version = "0.8.12", features = ["xxh64"] }
 
 arbutus = { path = "../arbutus" }
+colored = "2.1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 notify = "6.1.1"

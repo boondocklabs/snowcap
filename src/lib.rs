@@ -38,8 +38,10 @@ use message::WidgetMessage;
 use node::SnowcapNode;
 use node::SnowcapNodeData;
 use parking_lot::Mutex;
+use parser::value::ValueKind;
 use tracing::warn;
 use tree_util::WidgetBuilder;
+use xxhash_rust::xxh64::Xxh64;
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -76,6 +78,8 @@ type NodeRef<M> = arbutus::NodeRefRc<Node<SnowcapNode<M>, arbutus::NodeId>>;
 type Tree<M> = arbutus::Tree<NodeRef<M>>;
 type IndexedTree<M> = arbutus::IndexedTree<NodeRef<M>>;
 type NodeId = arbutus::NodeId;
+
+type SnowHasher = Xxh64;
 
 #[derive(Debug)]
 pub struct Snowcap<AppMessage>
@@ -184,10 +188,10 @@ where
         for node in self.tree.lock().as_ref().unwrap().root() {
             match &**node.node().data() {
                 SnowcapNodeData::Value(value) => {
-                    if let Value::Dynamic {
+                    if let ValueKind::Dynamic {
                         provider: Some(provider),
                         ..
-                    } = value
+                    } = value.inner()
                     {
                         // Provide an event sender to this Provider
                         provider
@@ -210,10 +214,10 @@ where
                 let _: Result<(), ()> = node.with_data(|inner| {
                     match &inner.data {
                         SnowcapNodeData::Value(value) => {
-                            if let Value::Dynamic {
+                            if let ValueKind::Dynamic {
                                 provider: Some(provider),
                                 ..
-                            } = value
+                            } = value.inner()
                             {
                                 let task = provider
                                     .lock()
@@ -457,7 +461,7 @@ where
 
             Message::Command(Command::Reload) => {
                 if let Err(e) = self.reload_file() {
-                    error!("Failed to reload markup file: {e:#?}");
+                    error!("{}", e);
                 }
                 Task::none()
             }
@@ -468,7 +472,7 @@ where
         info!("View");
 
         if let Some(tree) = &*self.tree.lock() {
-            debug!("{}", tree.root());
+            //info!("{}", tree.root());
             let mut builder = WidgetBuilder::new();
             match builder.build_widgets(tree) {
                 Ok(root) => {

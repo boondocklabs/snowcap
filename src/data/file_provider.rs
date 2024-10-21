@@ -1,4 +1,5 @@
 use std::{
+    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -10,23 +11,29 @@ use parking_lot::Mutex;
 use tokio::io::AsyncReadExt;
 use tracing::{error, info, info_span};
 
-use crate::{connector::Inlet, message::Event, Error};
+use crate::{connector::Inlet, message::Event, parser::error::ParseError, Error};
 
 use super::{
-    provider::{Provider, ProviderEvent},
+    provider::{DynProvider, Provider, ProviderEvent},
     FileData,
 };
 
 #[derive(Debug)]
 pub struct FileProvider {
-    this: Option<Arc<Mutex<dyn Provider>>>,
+    this: Option<Arc<Mutex<DynProvider>>>,
     path: PathBuf,
     inlet: Mutex<Option<Inlet<Event>>>,
     node_id: Option<NodeId>,
 }
 
+impl std::fmt::Display for FileProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FileProvider path={}", self.path.display())
+    }
+}
+
 impl FileProvider {
-    pub fn new(filename: &Path) -> Result<Self, Error> {
+    pub fn new(filename: &Path) -> Result<Self, ParseError> {
         info!("FileProvider filename='{filename:?}'");
 
         let path: PathBuf = std::fs::canonicalize(filename)?.into();
@@ -114,6 +121,8 @@ impl FileProvider {
 }
 
 impl Provider for FileProvider {
+    type H = crate::SnowHasher;
+
     fn set_event_inlet(&self, inlet: Inlet<Event>) {
         *self.inlet.lock() = Some(inlet);
     }
@@ -145,7 +154,7 @@ impl Provider for FileProvider {
         })
     }
 
-    fn init_task(&mut self, this: Arc<Mutex<dyn Provider>>, node_id: NodeId) -> iced::Task<Event> {
+    fn init_task(&mut self, this: Arc<Mutex<DynProvider>>, node_id: NodeId) -> iced::Task<Event> {
         info!("File Provider Init");
 
         self.this = Some(this.clone());
@@ -164,5 +173,9 @@ impl Provider for FileProvider {
 
     fn set_node_id(&mut self, node_id: arbutus::NodeId) {
         self.node_id = Some(node_id);
+    }
+
+    fn hash_source(&self, hasher: &mut dyn std::hash::Hasher) {
+        hasher.write(self.path.as_os_str().as_bytes());
     }
 }

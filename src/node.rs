@@ -1,21 +1,29 @@
+use colored::Colorize;
+use std::string::ToString;
+
 use std::{
     hash::{Hash, Hasher},
     ops::Deref,
 };
 
+use strum::{EnumDiscriminants, EnumIter};
 use xxhash_rust::xxh64::Xxh64;
 
 use crate::{attribute::Attributes, Value};
 
-#[derive(Debug, Hash, Clone)]
+#[derive(Debug, Hash, Clone, EnumDiscriminants, strum::Display)]
+#[strum_discriminants(derive(EnumIter, strum::Display, Hash, PartialOrd, Ord))]
+#[strum_discriminants(name(SnowcapNodeKind))]
 pub enum SnowcapNodeData {
     None,
     Root,
     Container,
+    #[strum(to_string = "Widget: {0}")]
     Widget(String),
     Row,
     Column,
     Stack,
+    #[strum(to_string = "Value: {0}")]
     Value(Value),
 }
 
@@ -47,7 +55,7 @@ where
     M: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{}", self.data.to_string().cyan())
     }
 }
 
