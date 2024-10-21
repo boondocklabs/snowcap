@@ -63,6 +63,15 @@ impl std::fmt::Display for AttributeValue {
 #[derive(Default, Clone)]
 pub struct Attributes(Arc<RwLock<HashMap<AttributeKind, Attribute>>>);
 
+impl std::hash::Hash for Attributes {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.each_with(state, |state, attr| {
+            attr.hash(state);
+        })
+        .unwrap();
+    }
+}
+
 impl Attributes {
     /// Create an empty set of attributes
     pub fn new() -> Self {
@@ -75,10 +84,10 @@ impl Attributes {
     }
 
     /// Try to acquire a write lock, and push the [`Attribute`] to the set of [`Attributes`]
-    pub fn push(&mut self, attr: Attribute) -> Result<(), SyncError> {
+    pub fn push(&mut self, attr: Attribute) -> Result<&Self, SyncError> {
         if let Some(mut guard) = self.0.try_write() {
             guard.insert(attr.kind(), attr);
-            Ok(())
+            Ok(self)
         } else {
             Err(SyncError::Deadlock(format!(
                 "RwLock try_write() failed in Attributes::push() {:#?}",

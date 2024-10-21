@@ -5,9 +5,9 @@ use std::{
 
 use xxhash_rust::xxh64::Xxh64;
 
-use crate::{attribute::Attributes, NodeId, Value};
+use crate::{attribute::Attributes, Value};
 
-#[derive(Debug, Hash)]
+#[derive(Debug, Hash, Clone)]
 pub enum SnowcapNodeData {
     None,
     Root,
@@ -75,13 +75,6 @@ where
     }
 }
 
-pub enum SnowcapNodeComparison {
-    Equal,
-    DataDiffer,
-    AttributeDiffer,
-    BothDiffer,
-}
-
 impl<M> SnowcapNode<M> {
     pub fn new(data: SnowcapNodeData) -> Self {
         SnowcapNode {
@@ -90,31 +83,6 @@ impl<M> SnowcapNode<M> {
             attrs: None,
             widget: None,
             dirty: false,
-        }
-    }
-
-    /// Compare two SnowcapNode instances, returning a SnowcapNodeComparison enum
-    /// describing if the nodes are the same or if the data, attributes, or both are different
-    pub fn compare(&self, other: &Self) -> SnowcapNodeComparison {
-        let data_equal = self.data.xxhash() == other.xxhash();
-
-        let attrs_equal = self
-            .attrs
-            .as_ref()
-            .zip(other.attrs.as_ref()) // Combine the two Options if both are Some
-            .map_or(
-                self.attrs.is_none() && other.attrs.is_none(),
-                |(ours, theirs)| ours.xxhash() == theirs.xxhash(),
-            );
-
-        if data_equal && attrs_equal {
-            SnowcapNodeComparison::Equal
-        } else if data_equal && !attrs_equal {
-            SnowcapNodeComparison::DataDiffer
-        } else if !data_equal && attrs_equal {
-            SnowcapNodeComparison::AttributeDiffer
-        } else {
-            SnowcapNodeComparison::BothDiffer
         }
     }
 
@@ -128,20 +96,13 @@ impl<M> SnowcapNode<M> {
         self
     }
 
-    /*
-    pub fn as_element(&self) -> Result<Element<'static, M>, ConversionError>
-    where
-        M: std::fmt::Debug + 'static,
-    {
-        if let Some(widget) = self.widget.as_ref() {
-            Ok(Element::new(widget))
-        } else {
-            Ok(Element::new(Text::new(format!(
-                "as_element(): No widget in node {self:#?}"
-            ))))
-        }
+    pub fn xxhash(&self) -> u64 {
+        let mut hasher = Xxh64::new(0);
+        self.data.hash(&mut hasher);
+        self.element_id.hash(&mut hasher);
+        self.attrs.hash(&mut hasher);
+        hasher.finish()
     }
-    */
 }
 
 impl<M> Deref for SnowcapNode<M> {

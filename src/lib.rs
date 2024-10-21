@@ -9,6 +9,7 @@ mod event;
 mod message;
 mod node;
 mod parser;
+mod tree;
 mod tree_util;
 mod util;
 mod widget;
@@ -323,13 +324,27 @@ where
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn reload_file(&mut self) -> Result<(), Error> {
+        use tree::{diff::TreeDiff, patch::TreePatcher};
+
         let filename = self.filename.clone().ok_or(Error::MissingAttribute(
             "No snowcap grammar filename in self".to_string(),
         ))?;
-        self.set_tree(IndexedTree::from_tree(
-            SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?,
-        ))?;
-        //self.watch_tree_files();
+
+        // Parse the new file into an IndexedTree
+        let new_tree =
+            IndexedTree::from_tree(SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?);
+
+        if let Some(tree) = &mut *self.tree.lock() {
+            let patches = TreeDiff::diff(tree, &new_tree);
+
+            TreePatcher::patch(tree, patches);
+
+            return Ok(());
+        };
+
+        // There was no current tree, set to new tree.
+
+        self.set_tree(new_tree)?;
         Ok(())
     }
 
@@ -456,7 +471,7 @@ where
         info!("View");
 
         if let Some(tree) = &*self.tree.lock() {
-            info!("{}", tree.root());
+            debug!("{}", tree.root());
             let mut builder = WidgetBuilder::new();
             match builder.build_widgets(tree) {
                 Ok(root) => {

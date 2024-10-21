@@ -1,84 +1,137 @@
-use tracing::{debug, debug_span};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
+    attribute::{Attribute, Attributes},
     message::{Event, WidgetMessage},
-    tree::hash::TreeNodeHasher,
-    MarkupTreeNode,
+    node::SnowcapNodeData,
+    tree::patch::PatchOperation,
+    IndexedTree, NodeId,
 };
+use arbutus::{Node, NodeRef};
+use tracing::{debug, debug_span, info};
 
-use super::node::TreeNode;
+use super::patch::TreePatch;
 
 pub struct TreeDiff;
 
 impl TreeDiff {
-    pub fn diff<'a, M>(input_current: TreeNode<'a, M>, input_new: TreeNode<'a, M>)
+    pub fn diff<'a, M>(a: &IndexedTree<M>, b: &IndexedTree<M>) -> Vec<TreePatch>
     where
-        M: Clone + std::fmt::Debug + From<Event> + From<WidgetMessage> + 'a,
+        M: Clone + std::fmt::Debug + From<Event> + 'a,
     {
-        let span = debug_span!("diff");
-        let _enter = span.enter();
+        info!("Diffing");
 
-        debug!(
-            r#"
-Comparing Trees
+        let inverted_index_a: HashMap<u64, NodeId> = a
+            .root()
+            .into_iter()
+            .map(|node| (node.node().data().xxhash(), node.node().id().clone()))
+            .collect();
 
-Current:
-{:#?}
+        let inverted_index_b: HashMap<u64, NodeId> = b
+            .root()
+            .into_iter()
+            .map(|node| (node.node().data().xxhash(), node.node().id().clone()))
+            .collect();
 
-New:
-{:#?}
+        let set_a: HashSet<u64> = inverted_index_a
+            .keys()
+            .map(|node_hash| node_hash.clone())
+            .collect();
 
-"#,
-            input_current, input_new
-        );
+        let set_b: HashSet<u64> = inverted_index_b
+            .keys()
+            .map(|node_hash| node_hash.clone())
+            .collect();
 
-        let current_greedy = TreeNodeHasher::Greedy.hash(&input_current);
-        let new_greedy = TreeNodeHasher::Greedy.hash(&input_new);
+        //info!("SetA:\n{set_a:#?}");
+        //info!("SetB:\n{set_b:#?}");
 
-        if current_greedy == new_greedy {
-            debug!("Greedy hashes of both trees are equal. Trees are identical.");
-            return;
+        // Nodes in A which don't exist in B
+        let mut diff_a: HashSet<NodeId> = set_a
+            .difference(&set_b)
+            .map(|h| inverted_index_a[h])
+            .collect();
+
+        // Nodes in B which don't exist in A
+        let mut diff_b: HashSet<NodeId> = set_b
+            .difference(&set_a)
+            .map(|h| inverted_index_b[h])
+            .collect();
+
+        info!("Diff A\n{diff_a:#?}");
+        info!("Diff B:\n{diff_b:#?}");
+
+        let mut patches = Vec::<TreePatch>::new();
+
+        for id in &diff_a {
+            let node = a.get_node(id);
+            info!("{node:#?}");
         }
 
-        let mut current_iter = input_current.iter();
-        let mut new_iter = input_new.iter();
+        // If we have exactly one different node in each tree, issue an op to update the node
+        if diff_a.len() == 1 && diff_b.len() == 1 {
+            let id_a = diff_a.drain().last().unwrap();
+            let id_b = diff_b.drain().last().unwrap();
 
-        let mut parent: Option<TreeNode<M>> = None;
+            let node_a = a.get_node(&id_a).unwrap();
+            let node_b = b.get_node(&id_b).unwrap();
+
+            let cmp = node_a.node().data().compare(&node_b.node().data());
+            let patch = match cmp {
+                crate::tree::compare::SnowcapNodeComparison::Equal => {
+                    panic!("Nodes should not be equal")
+                }
+                crate::tree::compare::SnowcapNodeComparison::DataDiffer => {
+                    patches.push(TreePatch::new(
+                        id_a,
+                        PatchOperation::SetData(node_b.node().data().data.clone()),
+                    ));
+                }
+                crate::tree::compare::SnowcapNodeComparison::AttributeDiffer => {
+                    patches.push(TreePatch::new(
+                        id_a,
+                        PatchOperation::SetAttributes(node_b.node().data().attrs.clone()),
+                    ));
+                }
+                crate::tree::compare::SnowcapNodeComparison::BothDiffer => {
+                    patches.push(TreePatch::new(
+                        id_a,
+                        PatchOperation::SetAttributes(node_b.node().data().attrs.clone()),
+                    ));
+                    patches.push(TreePatch::new(
+                        id_a,
+                        PatchOperation::SetData(node_b.node().data().data.clone()),
+                    ));
+                }
+            };
+        }
+
+        info!("PATCHES {patches:#?}");
 
         /*
-        loop {
-            let current_node = current_iter.next();
-            let new_node = new_iter.next();
+        for diff in set_a.difference(&set_b) {
+            info!("DIFF HASH {}", diff);
+            let node_a = a.get_node(&inverted_index_a[diff]).unwrap();
+            info!("DIFF NODE {node_a:?}");
 
-            if let (Some(current), Some(new)) = (current_node.clone(), new_node) {
-                if current.thrify_hash() != new.thrify_hash() {
-                    debug!("Nodes differ between\n\n{current:?}\n\nand\n\n{new:?}");
+            if let Some(parent) = node_a.node().parent() {
+                let parent_hash = parent.node().data().xxhash();
+                info!("Parent Hash {parent_hash}");
 
-                    let new_inner: MarkupTreeNode<M> = new.inner.clone();
+                // Find parent ID in Tree B inverted index
+                let parent_id_b = inverted_index_b.get(&parent_hash);
 
-                    current.replace_inner(new_inner);
-
-                    debug!("NEW {input_current:#?}");
-                    continue;
+                if let Some(parent_id_b) = parent_id_b {
+                    let parent_b = b.get_node(parent_id_b).unwrap();
+                    info!("WE GOT PARENT NODE FROM TREE B: {parent_b}")
+                } else {
+                    info!("Parent hash not found in inverted index for Tree B");
                 }
-            } else {
-                debug!("Current tree iter complete");
-
-                while let Some(new) = new_iter.next() {
-                    debug!("Additional new node {new:#?}");
-
-                    debug!("Parent {parent:#?}");
-                }
-
-                break;
             }
-
-            parent = current_node;
         }
         */
 
-        debug!("CHECK AFTER PATCH");
-        //Self::diff(input_current, input_new);
+        patches
     }
 }
 
@@ -91,36 +144,89 @@ mod test {
     #[traced_test]
     #[test]
     fn identical() {
-        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#).unwrap();
-        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#).unwrap();
+        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#)
+            .unwrap()
+            .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#)
+            .unwrap()
+            .index();
 
-        TreeDiff::diff(a, b);
+        TreeDiff::diff(&a, &b);
     }
 
     #[traced_test]
     #[test]
     fn different() {
-        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#).unwrap();
-        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#).unwrap();
-        TreeDiff::diff(a, b);
+        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#)
+            .unwrap()
+            .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#)
+            .unwrap()
+            .index();
+        TreeDiff::diff(&a, &b);
 
-        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{-[text("Hello")]}"#).unwrap();
-        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#).unwrap();
-        TreeDiff::diff(a, b);
+        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{-[text("Hello")]}"#)
+            .unwrap()
+            .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#)
+            .unwrap()
+            .index();
+        TreeDiff::diff(&a, &b);
 
         let a = SnowcapParser::<Message<String>>::parse_memory(
             r#"{-[text("Hello"), col[text("Test")]]}"#,
         )
-        .unwrap();
-        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#).unwrap();
-        TreeDiff::diff(a, b);
+        .unwrap()
+        .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#)
+            .unwrap()
+            .index();
+        TreeDiff::diff(&a, &b);
 
-        let a =
-            SnowcapParser::<Message<String>>::parse_memory(r#"{-[text("A"), text("B")]}"#).unwrap();
+        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{-[text("A"), text("B")]}"#)
+            .unwrap()
+            .index();
         let b = SnowcapParser::<Message<String>>::parse_memory(
             r#"{-[text("A"), text("B"), text("C")]}"#,
         )
-        .unwrap();
-        TreeDiff::diff(a, b);
+        .unwrap()
+        .index();
+        TreeDiff::diff(&a, &b);
+    }
+
+    #[traced_test]
+    #[test]
+    fn different_attrs() {
+        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:10>("A")}"#)
+            .unwrap()
+            .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:20>("A")}"#)
+            .unwrap()
+            .index();
+        let patches = TreeDiff::diff(&a, &b);
+
+        assert_eq!(patches.len(), 1);
+    }
+
+    #[traced_test]
+    #[test]
+    fn different_text() {
+        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:10>("A")}"#)
+            .unwrap()
+            .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:10>("B")}"#)
+            .unwrap()
+            .index();
+        let patches = TreeDiff::diff(&a, &b);
+
+        assert_eq!(patches.len(), 1);
+
+        let patch = patches.last().unwrap();
+        match patch.operation() {
+            crate::tree::diff::PatchOperation::SetAttributes(_attributes) => {
+                panic!("Unexpected attribute patch")
+            }
+            crate::tree::diff::PatchOperation::SetData(_snowcap_node_data) => {}
+        }
     }
 }

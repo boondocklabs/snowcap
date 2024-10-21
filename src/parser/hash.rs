@@ -1,12 +1,8 @@
-use std::hash::Hash;
-
+use super::Value;
+use crate::data::DataType;
 use tracing::warn;
 
-use crate::data::DataType;
-
-use super::Value;
-
-impl Hash for DataType {
+impl std::hash::Hash for DataType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
             DataType::Null => {}
@@ -27,7 +23,7 @@ impl Hash for DataType {
     }
 }
 
-impl Hash for Value {
+impl std::hash::Hash for Value {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
 
@@ -37,7 +33,7 @@ impl Hash for Value {
             Value::Boolean(b) => b.hash(state),
             Value::Array(vec) => vec.hash(state),
             Value::Dynamic { data, provider: _ } => {
-                data.hash(state);
+                //data.hash(state);
                 // TODO: Hash provider state
             }
         }

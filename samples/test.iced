@@ -1,13 +1,13 @@
 // Create a top level container
-{<bg:gradient(0.8,[#202030@0.0, #404045@0.5, #323030@1.0]), text-color:#ffffff>
+{<bg:gradient(0.8,[#202030@0.0, #404045@0.3, #323030@1.0]), text-color:#ffffff>
 
     // Create a column for the top bar, and bottom content
-    |<padding:5>[
+    |<padding:2>[
         // Top bar container with a fixed height, and filling the width
-        {<align-x:center, align-y:center, padding:10,10,10,10, height:100, width:fill, border:color(#a0a0a0),width(2.0),radius(10.0), bg:color(#505050)>
+        {<align-x:center, align-y:center, padding:10,10,10,10, height:100, width:fill, border:color(#a0a0a0),width(1.0),radius(6.0), bg:color(#505050)>
             row<align:center, spacing:30>[
                 image#ferris(file!("samples/ferris.png")),
-                text#title<size:30, text-color:#80e0ff, wrapping:none, shaping:advanced>("Snowcap Viewer")
+                text#title<size:40, text-color:#80e0ff, wrapping:none, shaping:advanced>("Snowcap Viewer")
             ]
         },
 

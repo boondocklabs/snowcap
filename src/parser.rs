@@ -400,6 +400,7 @@ impl std::fmt::Display for Value {
     }
 }
 
+/*
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -413,11 +414,25 @@ impl PartialEq for Value {
             // Compare `Array` variants (recursively compares each element)
             (Value::Array(a), Value::Array(b)) => a == b,
 
-            // Return false for types we can't compare
-            _ => false,
+            (
+                Value::Dynamic {
+                    data: da,
+                    provider: pa,
+                },
+                Value::Dynamic {
+                    data: db,
+                    provider: pb,
+                },
+            ) => {
+                // TODO: Fix comparison between providers
+                true
+            }
+
+            _ => true,
         }
     }
 }
+*/
 
 impl Borrow<String> for Value {
     fn borrow(&self) -> &String {
