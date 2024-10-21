@@ -3,44 +3,35 @@ use crate::{
     dynamic_widget::DynamicWidget,
     error::ConversionError,
     message::WidgetMessage,
-    NodeId, NodeRef,
+    tree_util::ChildData,
+    NodeId,
 };
 use iced::{widget::Row, Element};
-use tracing::{debug, debug_span, warn};
+use tracing::warn;
 
-pub struct SnowcapRow<'a, M>
-where
-    M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'a,
-{
-    //contents: Arc<Vec<TreeNode<'a, SnowcapNode<'a, M>, NodeId>>>,
-    row: Row<'a, M>,
-}
+pub struct SnowcapRow;
 
-impl<'a, M> SnowcapRow<'a, M>
-where
-    M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
-{
-    pub fn convert(
+impl SnowcapRow {
+    pub fn convert<M>(
         attrs: Attributes,
-        contents: &Vec<NodeRef<M>>,
-    ) -> Result<Row<'static, M>, ConversionError>
+        contents: Option<Vec<ChildData<'static, M>>>,
+    ) -> Result<DynamicWidget<'static, M>, ConversionError>
     where
         M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let children: Result<Vec<Element<'static, M>>, ConversionError> = debug_span!("row-item")
-            .in_scope(|| {
-                (contents)
-                    .iter()
-                    .map(|item| {
-                        debug!("{:#?}", item);
+        let mut row = if let Some(contents) = contents {
+            let children: Vec<Element<'_, M>> = contents
+                .into_iter()
+                .filter_map(|item| {
+                    tracing::debug!("Row Child {:?}", item);
+                    Some(item.into())
+                })
+                .collect(); // Convert each item into Element
 
-                        let element = DynamicWidget::from_node(item.clone())?.into_element();
-                        Ok(element)
-                    })
-                    .collect() // Convert each item into Element
-            });
-
-        let mut row = Row::with_children(children?);
+            Row::with_children(children)
+        } else {
+            Row::new()
+        };
 
         for attr in attrs {
             row = match *attr {
@@ -60,10 +51,10 @@ where
                 _ => {
                     warn!("Unsupported Row attribute {:#?}", attr);
                     row
-                } //_ => return Err(ConversionError::UnsupportedAttribute(attr, "Row".into())),
+                }
             };
         }
 
-        Ok(row)
+        Ok(DynamicWidget::default().with_widget(row))
     }
 }

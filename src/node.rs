@@ -3,10 +3,9 @@ use std::{
     ops::Deref,
 };
 
-use iced::{widget::Text, Element};
 use xxhash_rust::xxh64::Xxh64;
 
-use crate::{attribute::Attributes, widget::WidgetWrap, ConversionError, Value};
+use crate::{attribute::Attributes, NodeId, Value};
 
 #[derive(Debug, Hash)]
 pub enum SnowcapNodeData {
@@ -38,7 +37,8 @@ pub struct SnowcapNode<M> {
     pub data: SnowcapNodeData,
     pub element_id: Option<String>,
     pub attrs: Option<Attributes>,
-    pub widget: Option<WidgetWrap<M>>,
+    pub widget: Option<Box<dyn iced::advanced::Widget<M, iced::Theme, iced::Renderer>>>,
+    //pub widget: Option<WidgetWrap<M>>,
     pub dirty: bool,
 }
 
@@ -128,18 +128,20 @@ impl<M> SnowcapNode<M> {
         self
     }
 
+    /*
     pub fn as_element(&self) -> Result<Element<'static, M>, ConversionError>
     where
         M: std::fmt::Debug + 'static,
     {
         if let Some(widget) = self.widget.as_ref() {
-            Ok(Element::new(widget.widget()))
+            Ok(Element::new(widget))
         } else {
             Ok(Element::new(Text::new(format!(
                 "as_element(): No widget in node {self:#?}"
             ))))
         }
     }
+    */
 }
 
 impl<M> Deref for SnowcapNode<M> {

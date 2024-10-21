@@ -1,38 +1,38 @@
-use std::sync::Arc;
-
-use crate::attribute::Attributes;
 use crate::data::DataType;
 use crate::error::ConversionError;
 use crate::message::WidgetMessage;
 use crate::util::ElementWrapper;
+use crate::{attribute::Attributes, dynamic_widget::DynamicWidget};
 use arbutus::NodeId;
-use iced::{
-    advanced::Widget,
-    widget::{Image, QRCode, Svg, Text},
-};
+use iced::widget::{Image, QRCode, Svg, Text};
 use tracing::warn;
 
 impl DataType {
     pub fn to_widget<'a, M>(
+        self,
         node_id: NodeId,
-        data_arc: Arc<DataType>,
         attrs: Attributes,
         //) -> Result<Element<'a, SnowcapMessage>, ConversionError>
-    ) -> Result<Box<dyn Widget<M, iced::Theme, iced::Renderer>>, ConversionError>
+        //) -> Result<Box<dyn Widget<M, iced::Theme, iced::Renderer>>, ConversionError>
+    ) -> Result<DynamicWidget<'a, M>, ConversionError>
     where
         M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        match &*data_arc {
+        match self {
             DataType::Null => panic!("Null DataType"),
             DataType::Text(string) => {
-                let mut text = Text::new(string.clone());
+                let text = Text::new(string.clone());
 
-                for attr in attrs {}
+                //for attr in attrs {}
 
-                return Ok(Box::new(text));
+                return Ok(DynamicWidget::default().with_widget(text));
             }
-            DataType::Image(handle) => return Ok(Box::new(Image::new(handle))),
-            DataType::Svg(handle) => return Ok(Box::new(Svg::new(handle.clone()))),
+            DataType::Image(handle) => {
+                return Ok(DynamicWidget::default().with_widget(Image::new(handle)))
+            }
+            DataType::Svg(handle) => {
+                return Ok(DynamicWidget::default().with_widget(Svg::new(handle.clone())))
+            }
             DataType::QrCode(data) => {
                 let mut qr = QRCode::new(data.clone());
 
@@ -46,7 +46,7 @@ impl DataType {
                     };
                 }
 
-                return Ok(Box::new(qr));
+                return Ok(DynamicWidget::default().with_widget(qr));
             }
             DataType::Markdown(markdown_items) => {
                 let markdown: iced::Element<'static, M> = iced::widget::markdown(
@@ -56,7 +56,7 @@ impl DataType {
                 )
                 .map(move |url| M::from((node_id, WidgetMessage::Markdown(url))));
 
-                Ok(Box::new(ElementWrapper::new(markdown)))
+                Ok(DynamicWidget::default().with_widget(ElementWrapper::new(markdown)))
             }
         }
     }

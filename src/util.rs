@@ -1,6 +1,7 @@
 use iced::{advanced::Widget, Element};
 
-/// Wrap an element with Widget impl, so it can be used as a dyn Widget.
+/// Wrap an Element with a Widget impl, so it can be used as a dyn Widget.
+/// This is used by the Markdown widget, as the iced API only exposes an Element
 pub struct ElementWrapper<M> {
     element: Element<'static, M>,
 }

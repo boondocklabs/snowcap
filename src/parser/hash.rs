@@ -36,7 +36,7 @@ impl Hash for Value {
             Value::Number(num) => state.write(&num.to_ne_bytes()),
             Value::Boolean(b) => b.hash(state),
             Value::Array(vec) => vec.hash(state),
-            Value::Data { data, provider: _ } => {
+            Value::Dynamic { data, provider: _ } => {
                 data.hash(state);
                 // TODO: Hash provider state
             }

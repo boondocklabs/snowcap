@@ -18,6 +18,7 @@ pub enum WidgetType<'a, M> {
 }
 */
 
+/*
 use std::sync::{atomic::AtomicU64, Arc};
 
 use iced::advanced::Widget;
@@ -197,3 +198,4 @@ impl<'a, M> Widget<M, iced::Theme, iced::Renderer> for WidgetRef<M> {
         None
     }
 }
+*/

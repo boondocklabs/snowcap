@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::Arc;
 
-use arbutus::{NodeBuilder, TreeBuilder};
+use arbutus::{NodeBuilder, NodeRef, TreeBuilder};
 use attribute::AttributeParser;
 use parking_lot::Mutex;
 use pest::iterators::{Pair, Pairs};
@@ -139,14 +139,14 @@ where
                     "qr" => {
                         let data = iced::widget::qr_code::Data::new(value)?;
                         let data = Arc::new(DataType::QrCode(Arc::new(data)));
-                        return Ok(Value::Data {
+                        return Ok(Value::Dynamic {
                             data: Some(data),
                             provider: None,
                         });
                     }
                     "url" => {
                         let provider = UrlProvider::new(value.as_str())?;
-                        return Ok(Value::Data {
+                        return Ok(Value::Dynamic {
                             data: None,
                             provider: Some(Arc::new(Mutex::new(provider))),
                         });
@@ -155,7 +155,7 @@ where
                     "file" => {
                         let path = &PathBuf::from(value.clone());
                         let provider = FileProvider::new(path).unwrap();
-                        return Ok(Value::Data {
+                        return Ok(Value::Dynamic {
                             data: None,
                             provider: Some(Arc::new(Mutex::new(provider))),
                         });
@@ -244,8 +244,13 @@ where
         builder.child(node, |row| {
             debug!("Parsing column contents");
             let (id, attrs) = Self::parse_element_list(pair.into_inner(), row)?;
-            row.data_mut().element_id = id;
-            row.data_mut().attrs = Some(attrs);
+            row.node_mut()
+                .with_data_mut(|mut data| {
+                    data.element_id = id;
+                    data.attrs = Some(attrs);
+                    Ok::<(), ()>(())
+                })
+                .ok();
             Ok(())
         })
     }
@@ -259,8 +264,13 @@ where
         builder.child(node, |col| {
             debug!("Parsing column contents");
             let (id, attrs) = Self::parse_element_list(pair.into_inner(), col)?;
-            col.data_mut().element_id = id;
-            col.data_mut().attrs = Some(attrs);
+            col.node_mut()
+                .with_data_mut(|mut data| {
+                    data.element_id = id;
+                    data.attrs = Some(attrs);
+                    Ok::<(), ()>(())
+                })
+                .ok();
             Ok(())
         })
     }
@@ -274,8 +284,14 @@ where
         builder.child(node, |stack| {
             debug!("Parsing column contents");
             let (id, attrs) = Self::parse_element_list(pair.into_inner(), stack)?;
-            stack.data_mut().element_id = id;
-            stack.data_mut().attrs = Some(attrs);
+            stack
+                .node_mut()
+                .with_data_mut(|mut data| {
+                    data.element_id = id;
+                    data.attrs = Some(attrs);
+                    Ok::<(), ()>(())
+                })
+                .ok();
             Ok(())
         })
     }
@@ -294,11 +310,23 @@ where
                 match pair.as_rule() {
                     Rule::id => {
                         let widget_id = pair.into_inner().as_str();
-                        widget.data_mut().element_id = Some(widget_id.to_string());
+                        widget
+                            .node_mut()
+                            .with_data_mut(|mut data| {
+                                data.element_id = Some(widget_id.to_string());
+                                Ok::<(), ()>(())
+                            })
+                            .ok();
                     }
                     Rule::attributes => {
                         let attrs = Self::parse_attributes(pair)?;
-                        widget.data_mut().attrs = Some(attrs);
+                        widget
+                            .node_mut()
+                            .with_data_mut(|mut data| {
+                                data.attrs = Some(attrs);
+                                Ok::<(), ()>(())
+                            })
+                            .ok();
                     }
                     Rule::element_value => {
                         let value = Self::parse_value(pair.into_inner().next().unwrap())?;
@@ -348,13 +376,13 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     String(String),
     Number(f64),
     Boolean(bool),
     Array(Vec<Value>),
-    Data {
+    Dynamic {
         data: Option<Arc<DataType>>,
         provider: Option<Arc<Mutex<dyn Provider>>>,
     },
@@ -367,14 +395,7 @@ impl std::fmt::Display for Value {
             Value::Number(num) => f.write_fmt(format_args!("{}", num)),
             Value::Boolean(b) => f.write_fmt(format_args!("{}", b)),
             Value::Array(_vec) => f.write_str("[vec...]"),
-            Value::Data { .. } => f.write_str("[Data]"),
-            /*
-            Value::DataSource {
-                name,
-                value: _,
-                provider: _,
-            } => f.write_fmt(format_args!("Data source [{}]", name)),
-            */
+            Value::Dynamic { provider, .. } => write!(f, "[Dynamic provider={provider:?}]"),
         }
     }
 }

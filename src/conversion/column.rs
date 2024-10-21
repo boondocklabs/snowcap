@@ -1,19 +1,19 @@
 use iced::{widget::Column, Element};
-use tracing::debug_span;
 
 use crate::{
     attribute::{AttributeValue, Attributes},
     dynamic_widget::DynamicWidget,
     error::ConversionError,
     message::WidgetMessage,
-    NodeId, NodeRef,
+    tree_util::ChildData,
+    NodeId,
 };
 
 pub struct SnowcapColumn<'a, M>
 where
     M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
 {
-    contents: Vec<DynamicWidget<M>>,
+    //contents: Vec<DynamicWidget<M>>,
     column: Column<'a, M>,
 }
 
@@ -23,25 +23,24 @@ where
 {
     pub fn convert(
         attrs: Attributes,
-        contents: &Vec<NodeRef<M>>,
-    ) -> Result<Column<'static, M>, ConversionError>
+        contents: Option<Vec<ChildData<'static, M>>>,
+    ) -> Result<DynamicWidget<'static, M>, ConversionError>
     where
         M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let children: Result<Vec<Element<'static, M>>, ConversionError> = debug_span!("row-item")
-            .in_scope(|| {
-                (contents)
-                    .iter()
-                    .map(|item| {
-                        tracing::debug!("{:#?}", item);
+        let mut col = if let Some(contents) = contents {
+            let children: Vec<Element<'_, M>> = contents
+                .into_iter()
+                .filter_map(|item| {
+                    tracing::debug!("Column Child {:?}", item);
+                    Some(item.into())
+                })
+                .collect(); // Convert each item into Element
 
-                        let element = DynamicWidget::from_node(item.clone())?.into_element();
-                        Ok(element)
-                    })
-                    .collect() // Convert each item into Element
-            });
-
-        let mut col = Column::with_children(children?);
+            Column::with_children(children)
+        } else {
+            Column::new()
+        };
 
         for attr in attrs {
             col = match *attr {
@@ -55,6 +54,6 @@ where
             };
         }
 
-        Ok(col)
+        Ok(DynamicWidget::default().with_widget(col))
     }
 }

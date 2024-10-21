@@ -1,13 +1,9 @@
 use crate::{attribute::AttributeValue, NodeId, NodeRef};
-use iced::{widget::Container, Background};
+use iced::widget::Container;
 
 use crate::{
-    attribute::Attributes,
-    dynamic_widget::DynamicWidget,
-    error::ConversionError,
+    attribute::Attributes, dynamic_widget::DynamicWidget, error::ConversionError,
     message::WidgetMessage,
-    parser::{color::ColorParser, gradient::GradientParser},
-    Value,
 };
 
 pub struct SnowcapContainer<'a, M>
@@ -24,17 +20,13 @@ where
 {
     pub fn new(
         attrs: Attributes,
-        content: NodeRef<M>,
-    ) -> Result<Container<'static, M>, ConversionError>
+        content: DynamicWidget<'static, M>,
+        //) -> Result<Container<'a, M>, ConversionError>
+    ) -> Result<DynamicWidget<'a, M>, ConversionError>
     where
         M: std::fmt::Debug + From<(NodeId, WidgetMessage)>,
     {
-        //let widget = SnowcapWidget::from_node(content.inner.borrow().clone())?;
-        //let mut content = content.clone();
-        //widget.map(|w| content.set_widget(w));
-
-        let content = DynamicWidget::from_node(content)?.into_element();
-        let mut container = Container::new(content);
+        let mut container = Container::new(content.into_element());
         let mut style = iced::widget::container::Style::default();
 
         for attr in attrs {
@@ -65,6 +57,6 @@ where
 
         container = container.style(move |_theme| style);
 
-        Ok(container)
+        Ok(DynamicWidget::default().with_widget(container))
     }
 }

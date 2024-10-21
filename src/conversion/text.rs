@@ -29,7 +29,7 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &Value {
             Value::String(s) => s.clone().into(),
             Value::Number(n) => format!("{n}").into(),
             Value::Boolean(b) => format!("{b}").into(),
-            Value::Data { data, .. } => match &*data {
+            Value::Dynamic { data, .. } => match &*data {
                 Some(data) => match &**data {
                     crate::data::DataType::Text(text) => text.clone().into(),
                     _ => "Unknown DataType".into(),

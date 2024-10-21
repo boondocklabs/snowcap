@@ -9,6 +9,7 @@ mod event;
 mod message;
 mod node;
 mod parser;
+mod tree_util;
 mod util;
 mod widget;
 
@@ -39,10 +40,12 @@ use node::SnowcapNode;
 use node::SnowcapNodeData;
 use parking_lot::Mutex;
 use tracing::warn;
+use tree_util::WidgetBuilder;
 
 use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::exit;
 use std::sync::Arc;
 
 pub use conversion::theme::SnowcapTheme;
@@ -183,7 +186,7 @@ where
         for node in self.tree.lock().as_ref().unwrap().root() {
             match &**node.node().data() {
                 SnowcapNodeData::Value(value) => {
-                    if let Value::Data {
+                    if let Value::Dynamic {
                         provider: Some(provider),
                         ..
                     } = value
@@ -209,7 +212,7 @@ where
                 let _: Result<(), ()> = node.with_data(|inner| {
                     match &inner.data {
                         SnowcapNodeData::Value(value) => {
-                            if let Value::Data {
+                            if let Value::Dynamic {
                                 provider: Some(provider),
                                 ..
                             } = value
@@ -452,6 +455,20 @@ where
     pub fn view<'a>(&'a self) -> iced::Element<'a, Message<AppMessage>> {
         info!("View");
 
+        if let Some(tree) = &*self.tree.lock() {
+            info!("{}", tree.root());
+            let mut builder = WidgetBuilder::new();
+            match builder.build_widgets(tree) {
+                Ok(root) => {
+                    return root.into_element();
+                }
+                Err(e) => {
+                    error!("{:#?}", e);
+                }
+            }
+        }
+
+        /*
         self.update_widgets();
 
         if let Some(tree) = &*self.tree.lock() {
@@ -459,7 +476,6 @@ where
             iter.next();
             let root = iter.next().unwrap();
 
-            /*
             let node = root.node();
             let data = node.data();
 
@@ -472,6 +488,7 @@ where
             }
             */
 
+        /*
             let res = root.with_data(|node| match node.data {
                 SnowcapNodeData::Container => match DynamicWidget::from_node(root.clone()) {
                     Ok(widget) => Ok(widget.into_element()),
@@ -490,5 +507,7 @@ where
         } else {
             iced::widget::Text::new("No tree defined").into()
         }
+        */
+        iced::widget::Text::new("No tree defined").into()
     }
 }

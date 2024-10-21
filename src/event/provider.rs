@@ -77,7 +77,7 @@ where
                 node.with_data_mut(|mut data_node| match &mut data_node.data {
                     crate::node::SnowcapNodeData::Value(value) => match data {
                         crate::data::FileData::Svg(handle) => match value {
-                            crate::Value::Data { data, provider: _ } => {
+                            crate::Value::Dynamic { data, provider: _ } => {
                                 data.replace(Arc::new(DataType::Svg(handle)));
                                 Ok(())
                             }
@@ -86,7 +86,7 @@ where
                             )),
                         },
                         crate::data::FileData::Image(handle) => match value {
-                            crate::Value::Data { data, provider: _ } => {
+                            crate::Value::Dynamic { data, provider: _ } => {
                                 data.replace(Arc::new(DataType::Image(handle)));
                                 Ok(())
                             }
@@ -95,7 +95,7 @@ where
                             )),
                         },
                         crate::data::FileData::Markdown(items) => match value {
-                            crate::Value::Data { data, provider: _ } => {
+                            crate::Value::Dynamic { data, provider: _ } => {
                                 data.replace(Arc::new(DataType::Markdown(MarkdownItems::new(
                                     items,
                                 ))));
@@ -106,7 +106,7 @@ where
                             )),
                         },
                         crate::data::FileData::Text(text) => match value {
-                            crate::Value::Data { data, provider: _ } => {
+                            crate::Value::Dynamic { data, provider: _ } => {
                                 data.replace(Arc::new(DataType::Text(text)));
                                 Ok(())
                             }
@@ -133,7 +133,7 @@ where
                     crate::node::SnowcapNodeData::Value(value) => match data {
                         crate::data::FileData::Svg(_handle) => todo!(),
                         crate::data::FileData::Image(handle) => match value {
-                            crate::Value::Data { data, provider: _ } => {
+                            crate::Value::Dynamic { data, provider: _ } => {
                                 data.replace(Arc::new(DataType::Image(handle)));
                                 Ok(())
                             }
@@ -143,7 +143,7 @@ where
                         },
                         crate::data::FileData::Markdown(_vec) => todo!(),
                         crate::data::FileData::Text(text) => match value {
-                            crate::Value::Data { data, provider: _ } => {
+                            crate::Value::Dynamic { data, provider: _ } => {
                                 data.replace(Arc::new(DataType::Text(text)));
                                 Ok(())
                             }
