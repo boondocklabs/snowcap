@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use arbutus::Node as _;
-use arbutus::NodeRef as _;
+use arbutus::TreeNode as _;
+use arbutus::TreeNodeRef as _;
 use tracing::debug;
 use tracing::debug_span;
 use tracing::info;
@@ -66,7 +66,7 @@ where
                     let contents: Option<Vec<ChildData<M>>> = node.children().map(|child| {
                         child
                             .iter()
-                            .map(|f| children.remove(f.node().id()).unwrap())
+                            .map(|f| children.remove(&f.node().id()).unwrap())
                             .collect()
                     });
                     contents.unwrap()
@@ -79,7 +79,7 @@ where
                         debug!("Container");
                         SnowcapContainer::new(
                             attrs.unwrap_or(Attributes::default()),
-                            Self::content_single(*node_id, contents)?.ok_or(
+                            Self::content_single(node_id, contents)?.ok_or(
                                 ConversionError::Missing("expecting container content".into()),
                             )?,
                         )?
@@ -88,31 +88,31 @@ where
                         debug!("Widget({label})");
 
                         SnowcapWidget::new(
-                            *node_id,
+                            node_id,
                             label.clone(),
                             data.element_id.clone(),
                             attrs.unwrap_or(Attributes::default()),
                             contents,
                         )?
-                        .with_node_id(*node_id)
+                        .with_node_id(node_id)
                     }
                     SnowcapNodeData::Row => {
                         let num_children = children.as_ref().map(|children| children.len());
                         debug!("Row [children={num_children:?}]");
                         SnowcapRow::convert(attrs.unwrap_or(Attributes::default()), contents)?
-                            .with_node_id(*node_id)
+                            .with_node_id(node_id)
                     }
                     SnowcapNodeData::Column => {
                         let num_children = children.as_ref().map(|children| children.len());
                         debug!("Column [children={num_children:?}]");
                         SnowcapColumn::convert(attrs.unwrap_or(Attributes::default()), contents)?
-                            .with_node_id(*node_id)
+                            .with_node_id(node_id)
                     }
                     SnowcapNodeData::Stack => {
                         let num_children = contents.as_ref().map(|children| children.len());
                         debug!("Stack [children={num_children:?}]");
                         SnowcapStack::convert(attrs.unwrap_or(Attributes::default()), contents)?
-                            .with_node_id(*node_id)
+                            .with_node_id(node_id)
                     }
                     SnowcapNodeData::Value(_value) => {
                         info!("VALUE");

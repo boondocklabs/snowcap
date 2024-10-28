@@ -1,7 +1,7 @@
-use arbutus::{Node, NodeRef as _};
+use arbutus::{TreeNode, TreeNodeRef as _};
 use iced::Element;
 use std::collections::{HashMap, HashSet, VecDeque};
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::{
     data::DataType, dynamic_widget::DynamicWidget, message::WidgetMessage,
@@ -134,12 +134,12 @@ where
                 // Collect children of parent nodes into self.children
                 if let Some(child_data) = child_data {
                     self.children
-                        .entry(*parent_id)
+                        .entry(parent_id)
                         .or_insert(HashMap::new())
                         .insert(node_id, child_data);
                 }
 
-                if visited.insert(*parent_id) {
+                if visited.insert(parent_id) {
                     debug!("PUSH NEXT {parent_id}");
                     // Node has not been visited before, add to queue
                     next.push_front(parent.clone());

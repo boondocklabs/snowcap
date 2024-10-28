@@ -1,4 +1,4 @@
-use crate::{error::ConversionError, Value};
+use crate::error::ConversionError;
 use iced::Theme;
 
 /// A wrapper around the `Theme` enum that provides additional functionality,

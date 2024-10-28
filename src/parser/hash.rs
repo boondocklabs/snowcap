@@ -4,6 +4,8 @@ use tracing::warn;
 
 impl std::hash::Hash for DataType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+
         match self {
             DataType::Null => {}
             DataType::Image(handle) => handle.id().hash(state),
@@ -47,6 +49,7 @@ impl std::hash::Hash for ValueKind {
 
 impl std::hash::Hash for Value {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Hash the inner ValueKind
         (&**self).hash(state)
     }
 }

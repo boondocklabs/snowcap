@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use arbutus::{NodeBuilder, NodeRef, TreeBuilder};
+use arbutus::{NodeBuilder, TreeBuilder, TreeNodeRef};
 use attribute::AttributeParser;
 use pest::iterators::{Pair, Pairs};
 use pest::Parser;
@@ -250,7 +250,7 @@ where
         &mut self,
         pairs: Pairs<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
-    ) -> Result<(ElementIdOption, Attributes), ParseError> {
+    ) -> Result<(ElementIdOption, Option<Attributes>), ParseError> {
         let mut attrs = Attributes::default();
         let mut id: Option<String> = None;
 
@@ -271,7 +271,11 @@ where
             }
         }
 
-        Ok((id, attrs))
+        if attrs.len() > 0 {
+            Ok((id, Some(attrs)))
+        } else {
+            Ok((id, None))
+        }
     }
 
     fn parse_row<'b>(
@@ -287,7 +291,7 @@ where
             row.node_mut()
                 .with_data_mut(|mut data| {
                     data.element_id = id;
-                    data.attrs = Some(attrs);
+                    data.attrs = attrs;
                     Ok::<(), ()>(())
                 })
                 .ok();
@@ -308,7 +312,7 @@ where
             col.node_mut()
                 .with_data_mut(|mut data| {
                     data.element_id = id;
-                    data.attrs = Some(attrs);
+                    data.attrs = attrs;
                     Ok::<(), ()>(())
                 })
                 .ok();
@@ -330,7 +334,7 @@ where
                 .node_mut()
                 .with_data_mut(|mut data| {
                     data.element_id = id;
-                    data.attrs = Some(attrs);
+                    data.attrs = attrs;
                     Ok::<(), ()>(())
                 })
                 .ok();

@@ -198,14 +198,6 @@ impl<'a> IntoFragment<'a> for &ValueKind {
 ///   - If the `DataProvider` is a `File` and its data is `Text`, returns the text data.
 ///   - Otherwise, it returns `"Unsupported DataProvider"` or `"Unknown DataType"`.
 ///
-/// # Examples
-///
-/// ```rust
-/// use snowcap::Value;
-/// let value = Value::Number(42.0);
-/// let cow: std::borrow::Cow<'_, str> = (&value).into();
-/// assert_eq!(cow, "42");
-/// ```
 impl<'a> Into<std::borrow::Cow<'a, str>> for &ValueKind {
     fn into(self) -> std::borrow::Cow<'a, str> {
         match self {

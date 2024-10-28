@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use arbutus::NodeRef as _;
+use arbutus::TreeNodeRef as _;
 
 use iced::Task;
 use parking_lot::Mutex;

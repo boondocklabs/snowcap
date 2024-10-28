@@ -8,8 +8,6 @@ pub(crate) mod stack;
 pub(crate) mod theme;
 pub(crate) mod widget;
 
-use crate::error::ConversionError;
-
 /*
 /// Implements `TryInto` to convert a reference to `Value` into a reference to `String`.
 ///

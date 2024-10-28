@@ -42,20 +42,48 @@ impl Default for SnowcapNodeData {
 }
 
 pub struct SnowcapNode<M> {
-    pub data: SnowcapNodeData,
     pub element_id: Option<String>,
     pub attrs: Option<Attributes>,
+    pub data: SnowcapNodeData,
     pub widget: Option<Box<dyn iced::advanced::Widget<M, iced::Theme, iced::Renderer>>>,
-    //pub widget: Option<WidgetWrap<M>>,
     pub dirty: bool,
 }
 
-impl<M> std::fmt::Display for SnowcapNode<M>
-where
-    M: std::fmt::Debug,
-{
+impl<M> Clone for SnowcapNode<M> {
+    fn clone(&self) -> Self {
+        SnowcapNode {
+            element_id: self.element_id.clone(),
+            attrs: self.attrs.clone(),
+            data: self.data.clone(),
+            widget: None,
+            dirty: false,
+        }
+    }
+}
+
+impl<M> std::hash::Hash for SnowcapNode<M> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        //tracing::info!("Hashing SnowcapNode {}", self.data.to_string());
+        self.element_id.hash(state);
+        self.attrs.hash(state);
+        self.data.hash(state);
+    }
+}
+
+impl<M> std::fmt::Display for SnowcapNode<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.data.to_string().cyan())
+        let attr_display = if let Some(attrs) = &self.attrs {
+            format!("{:?}", attrs)
+        } else {
+            "".into()
+        };
+
+        write!(
+            f,
+            "{} {}",
+            self.data.to_string().cyan(),
+            attr_display.green(),
+        )
     }
 }
 
@@ -102,14 +130,6 @@ impl<M> SnowcapNode<M> {
     pub fn with_attrs(mut self, attrs: Option<Attributes>) -> Self {
         self.attrs = attrs;
         self
-    }
-
-    pub fn xxhash(&self) -> u64 {
-        let mut hasher = Xxh64::new(0);
-        self.data.hash(&mut hasher);
-        self.element_id.hash(&mut hasher);
-        self.attrs.hash(&mut hasher);
-        hasher.finish()
     }
 }
 

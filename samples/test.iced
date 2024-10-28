@@ -4,18 +4,18 @@
     // Create a column for the top bar, and bottom content
     col<padding:5>[
         // Top bar container with a fixed height, and filling the width
-        {<align-x:center, align-y:center, padding:10,10,10,10, height:100, width:fill, border:color(#a0a0a0),width(1.0),radius(6.0), bg:color(#c0c0a010)>
+        {<align-x:center, align-y:center, padding:10,10,10,10, height:100, width:fill, border:color(#0090a0),width(1.0),radius(6.0), bg:color(#2020f009)>
             row<align:center, spacing:10>[
                 image#ferris(file!("samples/ferris.png")),
-                text#title<size:40, text-color:#000000, wrapping:none, shaping:advanced>("Snowcap Viewer")
+                text#title<size:40, text-color:#c0c0c0, wrapping:none, shaping:advanced>("Snowcap Viewer")
             ]
         },
 
         // Bottom container
         {
-            row<height:fill, padding:top(10), spacing:10>[
+            row<height:fill, padding:top(2), spacing:2>[
                 // Left column container
-                {<width:200, height:fill, align-x:center, padding: 10.0, border:color(#0090a0),width(2),radius(10)>
+                {<width:200, height:fill, align-x:center, padding: 10.0, border:color(#0090a0),width(1),radius(10)>
                     // Left column
                     col[
                         svg(file!("samples/coder.svg")),
@@ -33,7 +33,7 @@
                 },
 
                 // Middle Column container
-                {<width:fill, height:fill, align-x:center, align-y:top, padding:10.0, border:color(#a0a0a0), width(1), radius(10)>
+                {<width:fill, height:fill, align-x:center, align-y:top, padding:10.0, border:color(#0090a0), width(1), radius(10)>
                     // Middle column (shorthand |)
                     |<align:center>[
                         markdown(file!("README.md")),
@@ -46,11 +46,10 @@
                 },
 
                 // Right Column
-                {<width:200, height:fill, align-x:left, padding:10.0, border:color(#a0a0a0), width(1), radius(10)>
+                {<width:200, height:fill, align-x:left, padding:10.0, border:color(#0090a0), width(1), radius(10)>
                     |[
                         text<size:30>("Ipsum"),
                         text(url!("http://corporatelorem.kovah.de/api/3?format=text"))
-                        //text(file!("samples/filler.txt"))
                     ]
                 }
             ]

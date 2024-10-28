@@ -1,202 +1,83 @@
-use std::collections::{HashMap, HashSet};
-
-use crate::NodeRef;
-use crate::{message::Event, tree::patch::PatchOperation, IndexedTree, NodeId};
-use arbutus::{Node as _, NodeRef as _};
-use tracing::info;
-
-use super::patch::TreePatch;
-
-pub struct TreeDiff;
-
-impl TreeDiff {
-    pub fn diff<'a, M>(a: &IndexedTree<M>, b: &IndexedTree<M>) -> Vec<TreePatch>
-    where
-        M: Clone + std::fmt::Debug + From<Event> + 'a,
-    {
-        info!("Diffing");
-
-        let inverted_index_a: HashMap<u64, NodeId> = a
-            .root()
-            .into_iter()
-            .map(|node| (node.node().data().xxhash(), node.node().id().clone()))
-            .collect();
-
-        let inverted_index_b: HashMap<u64, NodeId> = b
-            .root()
-            .into_iter()
-            .map(|node| (node.node().data().xxhash(), node.node().id().clone()))
-            .collect();
-
-        let set_a: HashSet<u64> = inverted_index_a
-            .keys()
-            .map(|node_hash| node_hash.clone())
-            .collect();
-
-        let set_b: HashSet<u64> = inverted_index_b
-            .keys()
-            .map(|node_hash| node_hash.clone())
-            .collect();
-
-        let mut va = set_a.iter().collect::<Vec<&u64>>();
-        va.sort();
-        let mut vb = set_b.iter().collect::<Vec<&u64>>();
-        vb.sort();
-
-        info!("SetA:\n{:#?}", va);
-        info!("SetB:\n{:#?}", vb);
-
-        // Nodes in A which don't exist in B
-        let diff_a: HashSet<NodeId> = set_a
-            .difference(&set_b)
-            .map(|h| inverted_index_a[h])
-            .collect();
-
-        // Nodes in B which don't exist in A
-        let diff_b: HashSet<NodeId> = set_b
-            .difference(&set_a)
-            .map(|h| inverted_index_b[h])
-            .collect();
-
-        info!("Diff A\n{diff_a:#?}");
-        info!("Diff B:\n{diff_b:#?}");
-
-        let mut patches = Vec::<TreePatch>::new();
-
-        info!("--- Tree A: ---\n");
-        info!("{}", a.root());
-        for id in &diff_a {
-            if let Some(node) = a.get_node(id) {
-                info!("{node}");
-            }
-        }
-        info!("---------------\n");
-
-        info!("--- Tree B: ---\n");
-        info!("{}", b.root());
-        for id in &diff_b {
-            if let Some(node) = b.get_node(id) {
-                info!("{node}");
-            }
-        }
-        info!("---------------\n");
-
-        let intersect = diff_a.intersection(&diff_b);
-        for id in intersect {
-            info!("Patch node {}", id);
-            let node_a = a.get_node(id).unwrap();
-            let node_b = b.get_node(id).unwrap();
-
-            patches.extend(Self::build_patch(node_a, node_b));
-        }
-
-        info!("PATCHES {patches:#?}");
-
-        /*
-        for diff in set_a.difference(&set_b) {
-            info!("DIFF HASH {}", diff);
-            let node_a = a.get_node(&inverted_index_a[diff]).unwrap();
-            info!("DIFF NODE {node_a:?}");
-
-            if let Some(parent) = node_a.node().parent() {
-                let parent_hash = parent.node().data().xxhash();
-                info!("Parent Hash {parent_hash}");
-
-                // Find parent ID in Tree B inverted index
-                let parent_id_b = inverted_index_b.get(&parent_hash);
-
-                if let Some(parent_id_b) = parent_id_b {
-                    let parent_b = b.get_node(parent_id_b).unwrap();
-                    info!("WE GOT PARENT NODE FROM TREE B: {parent_b}")
-                } else {
-                    info!("Parent hash not found in inverted index for Tree B");
-                }
-            }
-        }
-        */
-
-        patches
-    }
-
-    fn build_patch<'a, M>(dest: &NodeRef<M>, source: &NodeRef<M>) -> Vec<TreePatch>
-    where
-        M: Clone + std::fmt::Debug + From<Event> + 'a,
-    {
-        let dest_id = dest.node().id().clone();
-        let mut patches = Vec::<TreePatch>::new();
-
-        let cmp = dest.node().data().compare(&source.node().data());
-        match cmp {
-            crate::tree::compare::SnowcapNodeComparison::Equal => {
-                panic!("Nodes should not be equal")
-            }
-            crate::tree::compare::SnowcapNodeComparison::DataDiffer => {
-                patches.push(TreePatch::new(
-                    dest_id,
-                    PatchOperation::SetData(source.node().data().data.clone()),
-                ));
-            }
-            crate::tree::compare::SnowcapNodeComparison::AttributeDiffer => {
-                patches.push(TreePatch::new(
-                    dest_id,
-                    PatchOperation::SetAttributes(source.node().data().attrs.clone()),
-                ));
-            }
-            crate::tree::compare::SnowcapNodeComparison::BothDiffer => {
-                patches.push(TreePatch::new(
-                    dest_id,
-                    PatchOperation::SetAttributes(source.node().data().attrs.clone()),
-                ));
-                patches.push(TreePatch::new(
-                    dest_id,
-                    PatchOperation::SetData(source.node().data().data.clone()),
-                ));
-            }
-        };
-
-        patches
-    }
-}
-
 #[cfg(test)]
-mod test {
+mod tests {
+    use arbutus::TreeDiff;
+    use colored::Colorize as _;
     use tracing_test::traced_test;
 
-    use crate::{tree::diff::TreeDiff, Message, SnowcapParser};
+    use crate::{IndexedTree, Message, SnowcapParser};
+    fn print_trees<M>(a: &IndexedTree<M>, b: &IndexedTree<M>)
+    where
+        M: std::fmt::Debug,
+    {
+        println!(
+            "{}\n{}",
+            "----========[  Dest Tree  ]========----:".bright_purple(),
+            a.root()
+        );
+        println!(
+            "{}\n{}",
+            "----========[ Source Tree ]========----:".bright_purple(),
+            b.root()
+        );
+    }
+
+    fn tree_eq<M>(a: &IndexedTree<M>, b: &IndexedTree<M>)
+    where
+        M: std::fmt::Debug,
+    {
+        print_trees(a, b);
+
+        if a == b {
+            println!("{}", "Trees are identical".bright_green())
+        } else {
+            println!("{}", "Trees are different".bright_red())
+        }
+
+        assert_eq!(a, b);
+    }
 
     #[traced_test]
     #[test]
     fn identical() {
-        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#)
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#)
             .unwrap()
             .index();
         let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#)
             .unwrap()
             .index();
 
-        TreeDiff::diff(&a, &b);
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        assert_eq!(patches.len(), 0);
     }
 
     #[traced_test]
     #[test]
     fn different() {
-        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#)
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(r#"{text("Hello")}"#)
             .unwrap()
             .index();
         let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#)
             .unwrap()
             .index();
-        TreeDiff::diff(&a, &b);
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
 
-        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{-[text("Hello")]}"#)
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(r#"{-[text("Hello")]}"#)
             .unwrap()
             .index();
         let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#)
             .unwrap()
             .index();
-        TreeDiff::diff(&a, &b);
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
 
-        let a = SnowcapParser::<Message<String>>::parse_memory(
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(
             r#"{-[text("Hello"), col[text("Test")]]}"#,
         )
         .unwrap()
@@ -204,9 +85,12 @@ mod test {
         let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text("World")}"#)
             .unwrap()
             .index();
-        TreeDiff::diff(&a, &b);
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
 
-        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{-[text("A"), text("B")]}"#)
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(r#"{-[text("A"), text("B")]}"#)
             .unwrap()
             .index();
         let b = SnowcapParser::<Message<String>>::parse_memory(
@@ -214,42 +98,369 @@ mod test {
         )
         .unwrap()
         .index();
-        TreeDiff::diff(&a, &b);
+
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
     }
 
     #[traced_test]
     #[test]
-    fn different_attrs() {
-        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:10>("A")}"#)
+    fn modify_attrs() {
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:10>("A")}"#)
             .unwrap()
             .index();
         let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:20>("A")}"#)
             .unwrap()
             .index();
-        let patches = TreeDiff::diff(&a, &b);
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
 
         assert_eq!(patches.len(), 1);
+
+        tree_eq(&a, &b);
     }
 
     #[traced_test]
     #[test]
-    fn different_text() {
-        let a = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:10>("A")}"#)
+    fn modify_text() {
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:10>("A")}"#)
             .unwrap()
             .index();
         let b = SnowcapParser::<Message<String>>::parse_memory(r#"{text<size:10>("B")}"#)
             .unwrap()
             .index();
-        let patches = TreeDiff::diff(&a, &b);
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
+    }
 
-        assert_eq!(patches.len(), 1);
+    #[traced_test]
+    #[test]
+    fn add_child() {
+        // Test adding a node to a row
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(r#"{row[text("a")]}"#)
+            .unwrap()
+            .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{row[text("a"), text("b")]}"#)
+            .unwrap()
+            .index();
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
 
-        let patch = patches.last().unwrap();
-        match patch.operation() {
-            crate::tree::diff::PatchOperation::SetAttributes(_attributes) => {
-                panic!("Unexpected attribute patch")
-            }
-            crate::tree::diff::PatchOperation::SetData(_snowcap_node_data) => {}
+        // Test adding a node to a row
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(r#"{row[text("a")]}"#)
+            .unwrap()
+            .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(
+            r#"{row[text("a"), text("b"), text("c")]}"#,
+        )
+        .unwrap()
+        .index();
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
+    }
+
+    #[traced_test]
+    #[test]
+    fn add_child_middle() {
+        // Test adding a node to a row
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(
+            r#"{row[text("a"), text<size:10>("c")]}"#,
+        )
+        .unwrap()
+        .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(
+            r#"{row[text("a"), text("b"), text<size:20>("c")]}"#,
+        )
+        .unwrap()
+        .index();
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
+    }
+
+    #[traced_test]
+    #[test]
+    fn modify_depth() {
+        // Test modifying a child with a new subtree
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(
+            r#"{row[text("a"), text<size:10>("c")]}"#,
+        )
+        .unwrap()
+        .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(
+            r#"{row[col[text("a")], text<size:10>("c")]}"#,
+        )
+        .unwrap()
+        .index();
+
+        print_trees(&a, &b);
+
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
+    }
+
+    #[traced_test]
+    #[test]
+    fn delete_child() {
+        // Test adding a node to a row
+        let mut a =
+            SnowcapParser::<Message<String>>::parse_memory(r#"{row[text("a"), text("b")]}"#)
+                .unwrap()
+                .index();
+        let b = SnowcapParser::<Message<String>>::parse_memory(r#"{row[text("a")]}"#)
+            .unwrap()
+            .index();
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
+    }
+
+    #[traced_test]
+    #[test]
+    fn space_image() {
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(
+            r#"
+        {<width:200, height:fill, align-x:center, padding: 10.0, border:color(#0090a0),width(2),radius(10)>
+            // Left column
+            col[
+                //text("inserting"),
+                svg(file!("samples/coder.svg")),
+                pick-list#foo<selected:"abc">(["abc", "bar"]),
+                pick-list#bar<selected:"bar">(["baz", "bar"]),
+                text<size:24>("I'm some text"),
+                text<size:10>("More text in a Column"),
+                text(url!("http://icanhazip.com")),
+                image(url!("https://picsum.photos/200/300")),
+                space<size:10>(),
+                {<height:fill, align-y:center>
+                    text<size:17>("Edit the test.iced file to see your changes hot reloaded")
+                }
+            ]
         }
+        "#,
+        ).unwrap().index();
+
+        let b = SnowcapParser::<Message<String>>::parse_memory(
+            r#"
+        {<width:200, height:fill, align-x:center, padding: 10.0, border:color(#0090a0),width(2),radius(10)>
+            // Left column
+            col[
+                text("inserting"),
+                svg(file!("samples/coder.svg")),
+                pick-list#foo<selected:"abc">(["abc", "bar"]),
+                pick-list#bar<selected:"bar">(["baz", "bar"]),
+                text<size:24>("I'm some text"),
+                text<size:10>("More text in a Column"),
+                text(url!("http://icanhazip.com")),
+                image(url!("https://picsum.photos/200/300")),
+                space<size:10>(),
+                {<height:fill, align-y:center>
+                    text<size:17>("Edit the test.iced file to see your changes hot reloaded")
+                }
+            ]
+        }
+        "#,
+        ).unwrap().index();
+
+        println!("{}", a.root());
+
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+        tree_eq(&a, &b);
+    }
+
+    #[traced_test]
+    #[test]
+    fn add_column() {
+        // Test adding a node to a row
+        let mut a =
+            SnowcapParser::<Message<String>>::parse_memory(
+                r#"
+                // Create a top level container
+                {<bg:gradient(0.8,[#202030@0.0, #404045@0.3, #323030@1.0]), text-color:#ffffff>
+
+                    // Create a column for the top bar, and bottom content
+                    col<padding:5>[
+                        // Top bar container with a fixed height, and filling the width
+                        {<align-x:center, align-y:center, padding:10,10,10,10, height:100, width:fill, border:color(#a0a0a0),width(1.0),radius(6.0), bg:color(#c0c0a010)>
+                            row<align:center, spacing:10>[
+                                image#ferris(file!("samples/ferris.png")),
+                                text#title<size:40, text-color:#000000, wrapping:none, shaping:advanced>("Snowcap Viewer")
+                            ]
+                        },
+
+                        // Bottom container
+                        {
+                            row<height:fill, padding:top(10), spacing:10>[
+                                // Left column container
+                                {<width:200, height:fill, align-x:center, padding: 10.0, border:color(#0090a0),width(2),radius(10)>
+                                    // Left column
+                                    col[
+                                        //text("inserting"),
+                                        svg(file!("samples/coder.svg")),
+                                        pick-list#foo<selected:"abc">(["abc", "bar"]),
+                                        pick-list#bar<selected:"bar">(["baz", "bar"]),
+                                        text<size:24>("I'm some text"),
+                                        text<size:10>("More text in a Column"),
+                                        text(url!("http://icanhazip.com")),
+                                        image(url!("https://picsum.photos/200/300")),
+                                        space<size:10>(),
+                                        {<height:fill, align-y:center>
+                                            text<size:17>("Edit the test.iced file to see your changes hot reloaded")
+                                        }
+                                    ]
+                                },
+
+                                // Middle Column container
+                                {<width:fill, height:fill, align-x:center, align-y:top, padding:10.0, border:color(#a0a0a0), width(1), radius(10)>
+                                    // Middle column (shorthand |)
+                                    |<align:center>[
+                                        markdown(file!("README.md")),
+                                        qr-code<cell-size:10>(qr!("https://iced.rs")),
+                                        button#my-button(text<size:20>("Button")),
+                                        toggler#toggle-a<toggled:false, label:"Foo", size:20>(),
+                                        toggler#toggle-b<toggled:false, label:"Bar", size:30>(),
+                                        toggler<toggled:false, label:"Baz", size:40>()
+                                    ]
+                                },
+
+                                // Right Column
+                                {<width:200, height:fill, align-x:left, padding:10.0, border:color(#a0a0a0), width(1), radius(10)>
+                                    |[
+                                        text<size:30>("Ipsum"),
+                                        text(url!("http://corporatelorem.kovah.de/api/3?format=text"))
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+                "#
+            )
+                .unwrap()
+                .index();
+
+        let b =
+            SnowcapParser::<Message<String>>::parse_memory(
+                r#"
+                // Create a top level container
+                {<bg:gradient(0.8,[#202030@0.0, #404045@0.3, #323030@1.0]), text-color:#ffffff>
+
+                    // Create a column for the top bar, and bottom content
+                    col<padding:5>[
+                        // Top bar container with a fixed height, and filling the width
+                        {<align-x:center, align-y:center, padding:10,10,10,10, height:100, width:fill, border:color(#a0a0a0),width(1.0),radius(6.0), bg:color(#c0c0a010)>
+                            row<align:center, spacing:10>[
+                                image#ferris(file!("samples/ferris.png")),
+                                text#title<size:40, text-color:#000000, wrapping:none, shaping:advanced>("Snowcap Viewer")
+                            ]
+                        },
+
+                        // Bottom container
+                        {
+                            row<height:fill, padding:top(10), spacing:10>[
+                                // Left column container
+                                {<width:200, height:fill, align-x:center, padding: 10.0, border:color(#0090a0),width(2),radius(10)>
+                                    // Left column
+                                    col[
+                                        text("inserting"),
+                                        svg(file!("samples/coder.svg")),
+                                        pick-list#foo<selected:"abc">(["abc", "bar"]),
+                                        pick-list#bar<selected:"bar">(["baz", "bar"]),
+                                        text<size:24>("I'm some text"),
+                                        text<size:10>("More text in a Column"),
+                                        text(url!("http://icanhazip.com")),
+                                        image(url!("https://picsum.photos/200/300")),
+                                        space<size:10>(),
+                                        {<height:fill, align-y:center>
+                                            text<size:17>("Edit the test.iced file to see your changes hot reloaded")
+                                        }
+                                    ]
+                                },
+
+                                // Middle Column container
+                                {<width:fill, height:fill, align-x:center, align-y:top, padding:10.0, border:color(#a0a0a0), width(1), radius(10)>
+                                    // Middle column (shorthand |)
+                                    |<align:center>[
+                                        markdown(file!("README.md")),
+                                        qr-code<cell-size:10>(qr!("https://iced.rs")),
+                                        button#my-button(text<size:20>("Button")),
+                                        toggler#toggle-a<toggled:false, label:"Foo", size:20>(),
+                                        toggler#toggle-b<toggled:false, label:"Bar", size:30>(),
+                                        toggler<toggled:false, label:"Baz", size:40>()
+                                    ]
+                                },
+
+                                // Right Column
+                                {<width:200, height:fill, align-x:left, padding:10.0, border:color(#a0a0a0), width(1), radius(10)>
+                                    |[
+                                        text<size:30>("Ipsum"),
+                                        text(url!("http://corporatelorem.kovah.de/api/3?format=text"))
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+                "#
+            )
+                .unwrap()
+                .index();
+
+        println!("{}", a.root());
+
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+
+        tree_eq(&a, &b);
+    }
+
+    #[traced_test]
+    #[test]
+    fn add_row() {
+        let mut a = SnowcapParser::<Message<String>>::parse_memory(
+        r#"
+            {<width:200, height:fill, align-x:center, padding: 10.0, border:color(#0090a0),width(2),radius(10)>
+                col[
+                    text("foo"),
+                    svg(file!("samples/coder.svg")),
+                    text<size:24>("I'm some text")
+                ]
+            }
+            "#).unwrap().index();
+
+        let b = SnowcapParser::<Message<String>>::parse_memory(
+        r#"
+            {<width:200, height:fill, align-x:center, padding: 10.0, border:color(#0090a0),width(2),radius(10)>
+                col[
+                    row[text("foo"), text("bar")],
+                    svg(file!("samples/coder.svg")),
+                    text<size:24>("I'm some text")
+                ]
+            }
+            "#).unwrap().index();
+
+        print_trees(&a, &b);
+
+        let mut diff = TreeDiff::new(a.root(), b.root());
+        let patches = diff.diff();
+        patches.patch_tree(&mut a);
+
+        tree_eq(&a, &b);
     }
 }

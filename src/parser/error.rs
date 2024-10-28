@@ -29,11 +29,11 @@ impl std::fmt::Display for ParseErrorContext {
                 write!(f, "{}", "\nMarkup parser error\n".red())?;
                 write!(f, "{}", pest_error)
             }
-            ParseError::Attribute(e) => {
+            ParseError::Attribute(_e) => {
                 self.display_error_context(f, "parsing Attributes".yellow())
             }
-            ParseError::Gradient(e) => self.display_error_context(f, "parsing Gradient".yellow()),
-            ParseError::Color(e) => self.display_error_context(f, "parsing Color".yellow()),
+            ParseError::Gradient(_e) => self.display_error_context(f, "parsing Gradient".yellow()),
+            ParseError::Color(_e) => self.display_error_context(f, "parsing Color".yellow()),
             _ => self.display_error_context(f, "processing markup".yellow()),
         }
     }
@@ -71,7 +71,7 @@ impl ParseErrorContext {
             column.to_string().yellow()
         )?;
         write!(f, "{}\n", remain.cyan())?;
-        for i in 0..column - adjust - 1 {
+        for _ in 0..column - adjust - 1 {
             f.write_char(' ')?;
         }
         write!(f, "{}", "^\n".bright_green())?;

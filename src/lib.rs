@@ -13,8 +13,8 @@ mod tree_util;
 mod util;
 mod widget;
 
-use arbutus::Node as _;
-use arbutus::NodeRef as _;
+use arbutus::TreeNode as _;
+use arbutus::TreeNodeRef as _;
 use connector::{Endpoint, Inlet};
 use data::provider::ProviderEvent;
 use dynamic_widget::DynamicWidget;
@@ -69,11 +69,8 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 
-type Node<Data, Id> = arbutus::TreeNodeRefCell<Data, Id>;
-type NodeRef<M> = arbutus::NodeRefRc<Node<SnowcapNode<M>, arbutus::NodeId>>;
-
-//type Node<Data, Id> = arbutus::TreeNodeSimple<Data, Id>;
-//type NodeRef<M> = arbutus::NodeRefRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
+type Node<Data, Id> = arbutus::node::refcell::Node<Data, Id>;
+type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
 
 type Tree<M> = arbutus::Tree<NodeRef<M>>;
 type IndexedTree<M> = arbutus::IndexedTree<NodeRef<M>>;
@@ -325,7 +322,10 @@ where
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn reload_file(&mut self) -> Result<(), Error> {
-        use tree::{diff::TreeDiff, patch::TreePatcher};
+        //use tree::{diff::TreeDiff, patch::TreePatcher};
+
+        use arbutus::TreeDiff;
+        use colored::Colorize;
 
         let filename = self.filename.clone().ok_or(Error::MissingAttribute(
             "No snowcap grammar filename in self".to_string(),
@@ -335,17 +335,18 @@ where
         let new_tree =
             IndexedTree::from_tree(SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?);
 
-        if let Some(tree) = &mut *self.tree.lock() {
-            let patches = TreeDiff::diff(tree, &new_tree);
+        println!("{}", "Parsed New Tree".bright_magenta());
+        println!("{}", new_tree.root());
 
-            TreePatcher::patch(tree, patches);
+        if let Some(tree) = &mut (*self.tree.lock()) {
+            let mut diff = TreeDiff::new(tree.root().clone(), new_tree.root().clone());
+            let patch = diff.diff();
+            patch.patch_tree(tree);
 
-            return Ok(());
-        };
+            tree.reindex();
+        }
 
-        // There was no current tree, set to new tree.
-
-        self.set_tree(new_tree)?;
+        //self.set_tree(new_tree)?;
         Ok(())
     }
 
@@ -472,6 +473,8 @@ where
         info!("View");
 
         if let Some(tree) = &*self.tree.lock() {
+            info!("{}", tree.root());
+
             //info!("{}", tree.root());
             let mut builder = WidgetBuilder::new();
             match builder.build_widgets(tree) {
