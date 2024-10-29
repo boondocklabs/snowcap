@@ -1,165 +1,252 @@
 use arbutus::{TreeNode, TreeNodeRef as _};
 use iced::Element;
-use std::collections::{HashMap, HashSet, VecDeque};
-use tracing::debug;
+use tracing::{debug, debug_span};
 
 use crate::{
-    data::DataType, dynamic_widget::DynamicWidget, message::WidgetMessage,
-    parser::value::ValueKind, ConversionError, IndexedTree, NodeId, NodeRef, Value,
+    attribute::Attributes,
+    conversion::{
+        column::SnowcapColumn, container::SnowcapContainer, row::SnowcapRow, stack::SnowcapStack,
+        widget::SnowcapWidget,
+    },
+    dynamic_widget::DynamicWidget,
+    message::WidgetMessage,
+    node::SnowcapNodeData,
+    ConversionError, IndexedTree, NodeId, Value,
 };
 
+/// Widget content passed to the widget builders to provide their content.
 #[derive(Debug)]
-pub enum ChildData<'a, M> {
-    Widget(DynamicWidget<'a, M>),
+pub enum WidgetContent<M> {
+    None,
+    Widget(DynamicWidget<M>),
     Value(Value),
+    List(Vec<Self>),
 }
 
-impl<'a, M> Into<Element<'a, M>> for ChildData<'a, M> {
-    fn into(self) -> Element<'a, M> {
-        match self {
-            ChildData::Widget(dynamic_widget) => dynamic_widget.into_element(),
-            ChildData::Value(value) => match &*value {
-                ValueKind::String(_) => todo!(),
-                ValueKind::Float(_) => todo!(),
-                ValueKind::Integer(_) => todo!(),
-                ValueKind::Boolean(_) => todo!(),
-                ValueKind::Array(_vec) => todo!(),
-                ValueKind::Dynamic { data, provider: _ } => match data {
-                    Some(data) => match &**data {
-                        DataType::Null => todo!(),
-                        DataType::Image(_handle) => todo!(),
-                        DataType::Svg(_handle) => todo!(),
-                        DataType::QrCode(_arc) => todo!(),
-                        DataType::Markdown(_markdown_items) => todo!(),
-                        DataType::Text(_) => todo!(),
-                    },
-                    None => todo!(),
-                },
-            },
-        }
-    }
-}
-
-pub struct WidgetBuilder<M>
-where
-    M: 'static,
-{
-    /// Children widgets for the parent NodeId.
-    /// Collected during widget construction from leaves downwards.
-    children: HashMap<NodeId, HashMap<NodeId, ChildData<'static, M>>>,
-}
-
-impl<M> WidgetBuilder<M>
+impl<M> std::fmt::Display for WidgetContent<M>
 where
     M: std::fmt::Debug,
 {
-    pub fn new() -> Self {
-        Self {
-            //widget_index: HashMap::new(),
-            //widgets: Vec::new(),
-            children: HashMap::new(),
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WidgetContent::None => write!(f, "None"),
+            WidgetContent::Widget(dynamic_widget) => write!(f, "{:?}", dynamic_widget),
+            WidgetContent::Value(value) => write!(f, "{}", value),
+            WidgetContent::List(vec) => {
+                write!(f, "[")?;
+                for w in vec {
+                    write!(f, "{:?},", w)?;
+                }
+                write!(f, "]")
+            }
         }
     }
+}
 
-    pub fn build_widgets(
-        &mut self,
-        tree: &IndexedTree<M>,
-    ) -> Result<DynamicWidget<'static, M>, ConversionError>
+impl<M> Into<Element<'static, M>> for WidgetContent<M>
+where
+    M: 'static,
+{
+    fn into(self) -> Element<'static, M> {
+        match self {
+            WidgetContent::Widget(dynamic_widget) => dynamic_widget.into_element().unwrap(),
+            _ => unimplemented!("Cannot convert non-Widget type content into an Element"),
+        }
+    }
+}
+
+impl<M> IntoIterator for WidgetContent<M>
+where
+    M: std::fmt::Debug + 'static,
+{
+    type Item = Element<'static, M>;
+
+    type IntoIter = std::vec::IntoIter<Element<'static, M>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            WidgetContent::Widget(widget) => vec![widget.into_element().unwrap()].into_iter(),
+            WidgetContent::List(vec) => vec
+                .into_iter()
+                .filter_map(|item| {
+                    if let WidgetContent::Widget(widget) = item {
+                        Some(widget.into_element().unwrap())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into_iter(),
+            _ => {
+                tracing::warn!("Attempt to iterate non iterable type {:?}", self);
+                Vec::new().into_iter()
+            } // Return an empty iterator for non-iterable types
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct WidgetCache;
+
+impl WidgetCache {
+    pub fn build_widgets<M>(tree: &IndexedTree<M>) -> Result<(), ConversionError>
     where
         M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        // Create the queue initialized with all leaf nodes of the tree
-        let mut leaves = tree.leaves().clone();
-        leaves.reverse();
+        debug_span!("build-widgets-mark").in_scope(|| {
+            // First pass, mark dirty nodes and drop widgets. We do this as a first pass
+            // in a different scope so the RwLock write guards in WidgetRef are released.
+            // The parent of a node holds its WidgetRef in the contents of the parent,
+            // so we drop all widgets along the path before rebuilding. Any nodes not affected
+            // by a dirty path will be reused.
+            tree.leaf_iter().for_each(|noderef| {
+                let mut node = noderef.node_mut();
 
-        // Track which nodes have been visited, initialized with initial set of leaf nodes
-        let mut visited: HashSet<NodeId> =
-            leaves.iter().map(|leaf| leaf.node().id().clone()).collect();
+                if node.data().dirty == true {
+                    // Drop the old widget
+                    debug!("Drop dirty widget from node {:?}", node.id());
+                    drop(node.data_mut().widget.take());
 
-        let mut queue: VecDeque<NodeRef<M>> = VecDeque::from(leaves);
+                    // Mark the parent widget as dirty
+                    if let Some(parent) = node.parent_mut() {
+                        parent.node_mut().data_mut().dirty = true;
+                    }
 
-        // Queue of nodes at the next depth. This will move into the outer queue
-        // after it has drained indicating all nodes at the current depth have
-        // been processed. This ensures all children are built before moving
-        // to the next depth
-        let mut next: VecDeque<NodeRef<M>> = VecDeque::new();
-
-        while let Some(node) = queue.pop_front() {
-            let node_id = node.node().id().clone();
-
-            // Get the expected number of children for this node
-            let expected_children = node.node().num_children();
-
-            // Get the number of children we have in the cache for this node
-            let have_children = self.children.get(&node_id).map(|v| v.len()).unwrap_or(0);
-
-            if expected_children != have_children {
-                // Put the node into the next depth queue, as not all dependencies
-                // have been resolved yet.
-
-                if queue.is_empty() {
-                    queue.append(&mut next);
-                }
-                next.push_front(node);
-                continue;
-            }
-
-            // Remove and take ownership of the children widgets of this node id, which were
-            // built on the previous depth of this loop.
-            let children = self.children.remove(&node_id);
-
-            let child_data = match &node.node().data().data {
-                crate::node::SnowcapNodeData::Container
-                | crate::node::SnowcapNodeData::Widget(_)
-                | crate::node::SnowcapNodeData::Row
-                | crate::node::SnowcapNodeData::Column
-                | crate::node::SnowcapNodeData::Stack => {
-                    let widget =
-                        DynamicWidget::builder(node.clone(), children)?.with_node_id(node_id);
-                    Some(ChildData::Widget(widget))
-                }
-                crate::node::SnowcapNodeData::Value(value) => Some(ChildData::Value(value.clone())),
-                crate::node::SnowcapNodeData::Root => {
-                    // Root widget is in the children queue,
-                    // built from the previous depth pass
-                    Some(children.unwrap().drain().last().unwrap().1)
-                }
-                _ => None,
-            };
-
-            if let Some(parent) = node.node().parent() {
-                let parent_node = parent.node();
-                let parent_id = parent_node.id();
-
-                // Collect children of parent nodes into self.children
-                if let Some(child_data) = child_data {
-                    self.children
-                        .entry(parent_id)
-                        .or_insert(HashMap::new())
-                        .insert(node_id, child_data);
+                    // Clear the dirty flag
+                    node.data_mut().dirty = false;
                 }
 
-                if visited.insert(parent_id) {
-                    debug!("PUSH NEXT {parent_id}");
-                    // Node has not been visited before, add to queue
-                    next.push_front(parent.clone());
+                Ok::<(), ConversionError>(())
+            })
+        })?;
+
+        debug_span!("build-widgets").in_scope(|| {
+            tree.leaf_iter().for_each(|noderef| {
+                let _node_id = noderef.node().id();
+
+                let mut node = noderef.node_mut();
+                let data = node.data();
+                let node_id = node.id();
+                let attrs = data.attrs.clone().unwrap_or(Attributes::default());
+
+                if data.widget.is_some() {
+                    debug!("Reusing widget {node_id}");
+                    // Already have a widget
+                    return Ok(());
                 }
-            } else {
-                // No parent. This is the root node.
-                debug!("ROOT NODE");
 
-                debug!("{child_data:?}");
+                let child_widgets: Option<Vec<DynamicWidget<M>>> =
+                    node.children().and_then(|children| {
+                        let widgets: Vec<DynamicWidget<M>> = children
+                            .iter()
+                            .filter_map(|child| child.node().data().widget.clone())
+                            .collect();
 
-                if let Some(ChildData::Widget(root)) = child_data {
-                    return Ok(root);
+                        (!widgets.is_empty()).then_some(widgets)
+                    });
+
+                let content = if let Some(mut children) = child_widgets {
+                    if children.len() == 1 {
+                        WidgetContent::Widget(children.pop().unwrap())
+                    } else {
+                        WidgetContent::List(
+                            children
+                                .into_iter()
+                                .map(|w| WidgetContent::Widget(w))
+                                .collect(),
+                        )
+                    }
+                } else {
+                    if node.num_children() == 1 {
+                        let child = node.children().unwrap().iter().last().unwrap();
+
+                        if let SnowcapNodeData::Value(value) = &child.node().data().data {
+                            WidgetContent::Value(value.clone())
+                        } else {
+                            WidgetContent::None
+                        }
+                    } else {
+                        WidgetContent::None
+                    }
+                };
+
+                let widget = match &**data {
+                    SnowcapNodeData::Widget(widget) => {
+                        debug!("Building widget {widget} node {node_id} contents {content}");
+
+                        let widget = SnowcapWidget::new(
+                            node_id,
+                            widget.clone(),
+                            data.element_id.clone(),
+                            attrs,
+                            content,
+                        )?
+                        .with_node_id(node_id);
+
+                        Some(widget)
+                    }
+                    SnowcapNodeData::Container => {
+                        debug!("Building Container node {node_id} contents {content}");
+                        let widget = SnowcapContainer::new(attrs, content)?.with_node_id(node_id);
+                        Some(widget)
+                    }
+                    SnowcapNodeData::Row => {
+                        debug!("Building Row node {node_id} contents {content}");
+                        let widget = SnowcapRow::convert(attrs, content)?.with_node_id(node_id);
+                        Some(widget)
+                    }
+                    SnowcapNodeData::Column => {
+                        debug!("Building Column node {node_id} contents {content}");
+                        let widget = SnowcapColumn::convert(attrs, content)?.with_node_id(node_id);
+                        Some(widget)
+                    }
+                    SnowcapNodeData::Stack => {
+                        debug!("Building Stack node {node_id} contents {content}");
+                        let widget = SnowcapStack::convert(attrs, content)?.with_node_id(node_id);
+                        Some(widget)
+                    }
+                    SnowcapNodeData::Root => {
+                        debug!("Building Root node {node_id} contents {content}");
+                        if let WidgetContent::Widget(widget) = content {
+                            Some(widget)
+                        } else {
+                            panic!("No widget in root");
+                        }
+                    }
+                    SnowcapNodeData::Value(_) => None,
+                    SnowcapNodeData::None => None,
+                };
+
+                if let Some(widget) = widget {
+                    let old = node.data_mut().widget.replace(widget);
+                    drop(old);
                 }
-            }
 
-            if queue.is_empty() {
-                queue.append(&mut next);
-            }
-        }
+                Ok::<(), ConversionError>(())
+            })?;
 
-        Err(ConversionError::Missing("no root".into()))
+            Ok(())
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tracing_test::traced_test;
+
+    use crate::{tree_util::WidgetCache, Message, SnowcapParser};
+
+    #[traced_test]
+    #[test]
+    pub fn build_tree_widgets() {
+        let tree = SnowcapParser::<Message<String>>::parse_memory(
+            r#"{-[text("A"), text("B"), text("C")]}"#,
+        )
+        .unwrap()
+        .index();
+
+        println!("{}", tree.root());
+
+        WidgetCache::build_widgets(&tree);
     }
 }

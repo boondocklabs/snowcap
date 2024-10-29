@@ -9,6 +9,7 @@ use std::{
 use strum::{EnumDiscriminants, EnumIter};
 use xxhash_rust::xxh64::Xxh64;
 
+use crate::dynamic_widget::DynamicWidget;
 use crate::{attribute::Attributes, Value};
 
 #[derive(Debug, Hash, Clone, EnumDiscriminants, strum::Display)]
@@ -41,11 +42,14 @@ impl Default for SnowcapNodeData {
     }
 }
 
-pub struct SnowcapNode<M> {
+pub struct SnowcapNode<M>
+where
+    M: 'static,
+{
     pub element_id: Option<String>,
     pub attrs: Option<Attributes>,
     pub data: SnowcapNodeData,
-    pub widget: Option<Box<dyn iced::advanced::Widget<M, iced::Theme, iced::Renderer>>>,
+    pub widget: Option<DynamicWidget<M>>,
     pub dirty: bool,
 }
 

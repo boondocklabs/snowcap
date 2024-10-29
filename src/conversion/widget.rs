@@ -1,12 +1,12 @@
 use crate::attribute::{AttributeKind, AttributeValue};
 use crate::data::DataType;
 use crate::parser::value::ValueKind;
-use crate::tree_util::ChildData;
+use crate::tree_util::WidgetContent;
 use crate::util::ElementWrapper;
 use crate::NodeId;
 use iced::widget::{Button, PickList, QRCode, Rule, Space, Svg, Themer, Toggler};
 use iced::widget::{Image, Text};
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::attribute::Attributes;
 use crate::dynamic_widget::DynamicWidget;
@@ -16,7 +16,7 @@ use crate::message::WidgetMessage;
 pub struct SnowcapWidget;
 
 impl SnowcapWidget {
-    pub fn loading<M>() -> DynamicWidget<'static, M> {
+    pub fn loading<'a, M>() -> DynamicWidget<M> {
         DynamicWidget::default()
             .with_widget(Text::new("Loading"))
             .with_node_id(8989898)
@@ -27,20 +27,14 @@ impl SnowcapWidget {
         name: String,
         element_id: Option<String>,
         attrs: Attributes,
-        content: Option<Vec<ChildData<'static, M>>>,
-    ) -> Result<DynamicWidget<'a, M>, ConversionError>
+        content: WidgetContent<M>,
+    ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'a,
+        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
         match name.as_str() {
             "image" => {
-                let mut content =
-                    content.ok_or(ConversionError::Missing("image content".into()))?;
-                let content = content
-                    .pop()
-                    .ok_or(ConversionError::Missing("image content".into()))?;
-
-                if let ChildData::Value(value) = content {
+                if let WidgetContent::Value(value) = content {
                     match value.inner() {
                         ValueKind::String(_) => todo!(),
                         ValueKind::Float(_) => todo!(),
@@ -66,12 +60,7 @@ impl SnowcapWidget {
                 }
             }
             "svg" => {
-                let mut content = content.ok_or(ConversionError::Missing("svg content".into()))?;
-                let content = content
-                    .pop()
-                    .ok_or(ConversionError::Missing("svg content".into()))?;
-
-                if let ChildData::Value(value) = content {
+                if let WidgetContent::Value(value) = content {
                     match value.inner() {
                         ValueKind::String(_) => todo!(),
                         ValueKind::Float(_) => todo!(),
@@ -93,33 +82,26 @@ impl SnowcapWidget {
                     }
                 } else {
                     Err(ConversionError::InvalidType(
-                        "Image expecting ChildData::Value".into(),
+                        "Svg expecting ChildData::Value".into(),
                     ))
                 }
             }
             "markdown" => {
-                let mut content =
-                    content.ok_or(ConversionError::Missing("markdown content".into()))?;
-                let content = content
-                    .pop()
-                    .ok_or(ConversionError::Missing("markdown content".into()))?;
-
-                if let ChildData::Value(value) = content {
+                if let WidgetContent::Value(value) = content {
                     match value.inner() {
                         ValueKind::Dynamic { data, provider: _ } => {
                             if let Some(data) = data {
                                 if let DataType::Markdown(markdown_items) = &**data {
-                                    let markdown: iced::Element<'static, M> =
-                                        iced::widget::markdown(
-                                            markdown_items.into_iter(),
-                                            iced::widget::markdown::Settings::default(),
-                                            iced::widget::markdown::Style::from_palette(
-                                                iced::Theme::default().palette(),
-                                            ),
-                                        )
-                                        .map(move |url| {
-                                            M::from((node_id, WidgetMessage::Markdown(url)))
-                                        });
+                                    let markdown = iced::widget::markdown(
+                                        markdown_items.into_iter(),
+                                        iced::widget::markdown::Settings::default(),
+                                        iced::widget::markdown::Style::from_palette(
+                                            iced::Theme::default().palette(),
+                                        ),
+                                    )
+                                    .map(move |url| {
+                                        M::from((node_id, WidgetMessage::Markdown(url)))
+                                    });
 
                                     Ok(DynamicWidget::default()
                                         .with_widget(ElementWrapper::new(markdown)))
@@ -141,13 +123,7 @@ impl SnowcapWidget {
                 }
             }
             "qr-code" => {
-                let mut content =
-                    content.ok_or(ConversionError::Missing("qr-code content".into()))?;
-                let content = content
-                    .pop()
-                    .ok_or(ConversionError::Missing("qr-code content".into()))?;
-
-                if let ChildData::Value(value) = content {
+                if let WidgetContent::Value(value) = content {
                     let data = value
                         .dynamic()?
                         .clone()
@@ -173,14 +149,14 @@ impl SnowcapWidget {
                         Ok(SnowcapWidget::loading())
                     }
                 } else {
+                    error!("QrCode got {content:#?}");
                     Err(ConversionError::InvalidType(
-                        "expecting ChildData::Value".into(),
+                        "QrCode expecting WidgetContent::Value".into(),
                     ))
                 }
             }
             "text" => {
-                let mut content = content.ok_or(ConversionError::Missing("text content".into()))?;
-                let mut text = if let Some(ChildData::Value(value)) = content.pop() {
+                let mut text = if let WidgetContent::Value(value) = content {
                     Text::new(value.inner())
                 } else {
                     Text::new("X")
@@ -227,15 +203,11 @@ impl SnowcapWidget {
             }
 
             "button" => {
-                if let Some(mut content) = content {
-                    let button = Button::new(content.pop().unwrap()).on_press_with(move || {
-                        M::from((node_id, WidgetMessage::Button(element_id.clone())))
-                    });
+                let button = Button::new(content).on_press_with(move || {
+                    M::from((node_id, WidgetMessage::Button(element_id.clone())))
+                });
 
-                    Ok(DynamicWidget::default().with_widget(button))
-                } else {
-                    Err(ConversionError::Missing("button content".into()))
-                }
+                Ok(DynamicWidget::default().with_widget(button))
             }
             "rule-horizontal" => Ok(DynamicWidget::default().with_widget(Rule::horizontal(1))),
             "rule-vertical" => Ok(DynamicWidget::default().with_widget(Rule::vertical(1))),
@@ -273,10 +245,8 @@ impl SnowcapWidget {
                 Ok(DynamicWidget::default().with_widget(toggler))
             }
 
+            /*
             "themer" => {
-                let mut content =
-                    content.ok_or(ConversionError::Missing("themer content".into()))?;
-
                 let theme =
                     if let Some(AttributeValue::Theme(theme)) = attrs.get(AttributeKind::Theme)? {
                         Some(theme)
@@ -289,15 +259,13 @@ impl SnowcapWidget {
                         tracing::info!("Themer from {:?} to {:?}", old_theme, theme);
                         theme.as_ref().unwrap().clone()
                     },
-                    content.pop().unwrap(),
+                    content,
                 );
                 Ok(DynamicWidget::default().with_widget(themer))
             }
+            */
             "pick-list" => {
-                let mut content =
-                    content.ok_or(ConversionError::Missing("pick-list content".into()))?;
-
-                if let Some(ChildData::Value(value)) = content.pop() {
+                if let WidgetContent::Value(value) = content {
                     let current = if let Some(AttributeValue::Selected(selected)) =
                         attrs.get(AttributeKind::Selected)?
                     {

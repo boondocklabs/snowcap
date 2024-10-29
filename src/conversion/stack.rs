@@ -5,7 +5,7 @@ use crate::{
     dynamic_widget::DynamicWidget,
     error::ConversionError,
     message::WidgetMessage,
-    tree_util::ChildData,
+    tree_util::WidgetContent,
     NodeId,
 };
 
@@ -14,24 +14,12 @@ pub struct SnowcapStack;
 impl SnowcapStack {
     pub fn convert<M>(
         attrs: Attributes,
-        contents: Option<Vec<ChildData<'static, M>>>,
-    ) -> Result<DynamicWidget<'static, M>, ConversionError>
+        contents: WidgetContent<M>,
+    ) -> Result<DynamicWidget<M>, ConversionError>
     where
         M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let mut stack = if let Some(contents) = contents {
-            let children: Vec<Element<'_, M>> = contents
-                .into_iter()
-                .filter_map(|item| {
-                    tracing::debug!("Stack Child {:?}", item);
-                    Some(item.into())
-                })
-                .collect(); // Convert each item into Element
-
-            Stack::with_children(children)
-        } else {
-            Stack::new()
-        };
+        let mut stack = Stack::with_children(contents);
 
         for attr in attrs {
             stack = match *attr.value() {

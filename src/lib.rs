@@ -13,6 +13,7 @@ mod tree_util;
 mod util;
 mod widget;
 
+use arbutus::TreeDiff;
 use arbutus::TreeNode as _;
 use arbutus::TreeNodeRef as _;
 use connector::{Endpoint, Inlet};
@@ -28,8 +29,14 @@ use event::provider::ProviderEventHandler;
 use event::provider::ProviderState;
 use event::DynamicHandler;
 use event::EventHandler;
+
+// Re-export iced
 pub use iced;
 use iced::advanced::graphics::futures::MaybeSend;
+use iced::futures;
+use iced::futures::SinkExt;
+use iced::Task;
+
 use message::Command;
 use message::Event;
 use message::EventKind;
@@ -40,7 +47,7 @@ use node::SnowcapNodeData;
 use parking_lot::Mutex;
 use parser::value::ValueKind;
 use tracing::warn;
-use tree_util::WidgetBuilder;
+use tree_util::WidgetCache;
 use xxhash_rust::xxh64::Xxh64;
 
 use std::any::Any;
@@ -50,9 +57,6 @@ use std::sync::Arc;
 
 pub use conversion::theme::SnowcapTheme;
 pub use error::*;
-use iced::futures;
-use iced::futures::SinkExt;
-use iced::Task;
 pub use message::Message;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -69,7 +73,12 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 
+/*
 type Node<Data, Id> = arbutus::node::refcell::Node<Data, Id>;
+type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
+*/
+
+type Node<Data, Id> = arbutus::node::simple::Node<Data, Id>;
 type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
 
 type Tree<M> = arbutus::Tree<NodeRef<M>>;
@@ -78,7 +87,6 @@ type NodeId = arbutus::NodeId;
 
 type SnowHasher = Xxh64;
 
-#[derive(Debug)]
 pub struct Snowcap<AppMessage>
 where
     AppMessage: Clone + std::fmt::Debug + 'static,
@@ -120,16 +128,16 @@ where
         let provider_state = Arc::new(Mutex::new(ProviderState::new(tree.clone())));
 
         let mut snow = Self {
-            #[cfg(not(target_arch = "wasm32"))]
-            filename: None,
             tree,
-            #[cfg(not(target_arch = "wasm32"))]
-            provider_watcher,
             event_endpoint,
             event_handler: HashMap::new(),
+            provider_state,
             #[cfg(not(target_arch = "wasm32"))]
             notify_state,
-            provider_state,
+            #[cfg(not(target_arch = "wasm32"))]
+            filename: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            provider_watcher,
         };
 
         let provider_handler = ProviderEventHandler::new(snow.tree.clone());
@@ -287,6 +295,19 @@ where
     pub fn load_memory(&mut self, data: &str) -> Result<(), Error> {
         let tree = SnowcapParser::<Message<AppMessage>>::parse_memory(data)?;
 
+        if let Some(current) = &mut *self.tree.lock() {
+            // We already have a tree loaded. Diff the trees
+            let mut diff = TreeDiff::new(current.root().clone(), tree.root().clone());
+            let patch = diff.diff();
+
+            info!("Patching existing tree {patch:#?}");
+            patch.patch_tree(current);
+
+            current.reindex();
+
+            return Ok(());
+        }
+
         self.set_tree(IndexedTree::from_tree(tree))?;
 
         Ok(())
@@ -311,10 +332,6 @@ where
             Message::<AppMessage>::Event(ep_message.into_inner())
         }));
 
-        tasks.push(Task::perform(async { true }, |_event| {
-            Message::Event(Event::Debug("Sending...".to_string()))
-        }));
-
         info!("Starting init tasks");
 
         Task::batch(tasks)
@@ -322,8 +339,6 @@ where
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn reload_file(&mut self) -> Result<(), Error> {
-        //use tree::{diff::TreeDiff, patch::TreePatcher};
-
         use arbutus::TreeDiff;
         use colored::Colorize;
 
@@ -398,14 +413,20 @@ where
                 }
             };
 
-            return handler.handle(module_event, module_state).unwrap();
+            debug!("Entering event handler");
+            match handler.handle(module_event, module_state) {
+                Ok(task) => {
+                    debug!("Event handler returned");
+                    task
+                }
+                Err(e) => {
+                    error!("{e:?}");
+                    Task::none()
+                }
+            }
         } else {
             // Event wasn't handled by dynamic dispatch
             match event {
-                Event::Debug(msg) => {
-                    info!("Received debug message {msg}");
-                    Task::none()
-                }
                 #[cfg(not(target_arch = "wasm32"))]
                 Event::FsNotifyError(e) => {
                     error!("FsNotifyError {e:#?}");
@@ -441,92 +462,67 @@ where
         }
     }
 
+    #[profiling::function]
     pub fn update(&mut self, message: &mut Message<AppMessage>) -> Task<Message<AppMessage>> {
         let _message_type: MessageDiscriminants = (&*message).into();
 
-        match message {
-            Message::App(app_message) => {
-                debug!("AppMessage {app_message:?}");
-                //f(&app_message)
-                Task::none()
-            }
-            Message::Widget { node_id, message } => self.handle_widget_message(node_id, message),
-            Message::Event(event) => {
-                let event = std::mem::take(event);
-                self.handle_event(event)
-            }
-            Message::Empty => {
-                warn!("Update called on Empty Message");
-                Task::none()
-            }
-
-            Message::Command(Command::Reload) => {
-                if let Err(e) = self.reload_file() {
-                    error!("{}", e);
+        let task = {
+            profiling::scope!("message-dispatch");
+            let task = match message {
+                Message::App(app_message) => {
+                    debug!("AppMessage {app_message:?}");
+                    //f(&app_message)
+                    Task::none()
                 }
-                Task::none()
+                Message::Widget { node_id, message } => {
+                    self.handle_widget_message(node_id, message)
+                }
+                Message::Event(event) => {
+                    let event = std::mem::take(event);
+                    self.handle_event(event)
+                }
+                Message::Empty => {
+                    warn!("Update called on Empty Message");
+                    Task::none()
+                }
+
+                Message::Command(Command::Reload) => {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Err(e) = self.reload_file() {
+                        error!("{}", e);
+                    }
+                    Task::none()
+                }
+            };
+            task
+        };
+
+        if let Some(tree) = &*self.tree.lock() {
+            profiling::scope!("build-widgets");
+            info!("{}", tree.root());
+            if let Err(e) = WidgetCache::build_widgets(tree) {
+                error!("Failed to build widgets: {}", e)
             }
         }
+
+        task
     }
 
+    #[profiling::function]
     pub fn view<'a>(&'a self) -> iced::Element<'a, Message<AppMessage>> {
         info!("View");
 
-        if let Some(tree) = &*self.tree.lock() {
-            info!("{}", tree.root());
-
-            //info!("{}", tree.root());
-            let mut builder = WidgetBuilder::new();
-            match builder.build_widgets(tree) {
-                Ok(root) => {
-                    return root.into_element();
-                }
-                Err(e) => {
-                    error!("{:#?}", e);
-                }
-            }
-        }
-
-        /*
-        self.update_widgets();
-
-        if let Some(tree) = &*self.tree.lock() {
-            let mut iter = tree.root().into_iter();
-            iter.next();
-            let root = iter.next().unwrap();
-
-            let node = root.node();
-            let data = node.data();
-
-            let ele = data.as_element();
-
-            if ele.is_ok() {
-                return ele.unwrap();
+        let root = if let Some(tree) = &*self.tree.lock() {
+            if let Some(widget) = &tree.root().node().data().widget {
+                widget.clone().into_element().unwrap()
             } else {
-                Text::new("No root widget").into()
-            }
-            */
-
-        /*
-            let res = root.with_data(|node| match node.data {
-                SnowcapNodeData::Container => match DynamicWidget::from_node(root.clone()) {
-                    Ok(widget) => Ok(widget.into_element()),
-                    Err(e) => {
-                        error!("{e:#?}");
-                        Err(e)
-                    }
-                },
-                _ => Ok(Text::new("Expecting Container root node").into()),
-            });
-
-            match res {
-                Ok(element) => element,
-                Err(e) => Text::new(format!("{e:#?}")).into(),
+                iced::widget::Text::new("No root widget in tree").into()
             }
         } else {
-            iced::widget::Text::new("No tree defined").into()
-        }
-        */
-        iced::widget::Text::new("No tree defined").into()
+            iced::widget::Text::new("No tree").into()
+        };
+
+        profiling::finish_frame!();
+        root
     }
 }

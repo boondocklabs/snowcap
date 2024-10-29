@@ -100,8 +100,6 @@ pub enum Event {
         provider: Arc<Mutex<DynProvider>>,
     },
 
-    Debug(String),
-
     /// A filesystem notification event was received
     #[cfg(not(target_arch = "wasm32"))]
     FsNotify(notify::Event),

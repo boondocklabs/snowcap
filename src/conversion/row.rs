@@ -3,7 +3,7 @@ use crate::{
     dynamic_widget::DynamicWidget,
     error::ConversionError,
     message::WidgetMessage,
-    tree_util::ChildData,
+    tree_util::WidgetContent,
     NodeId,
 };
 use iced::{widget::Row, Element};
@@ -14,24 +14,12 @@ pub struct SnowcapRow;
 impl SnowcapRow {
     pub fn convert<M>(
         attrs: Attributes,
-        contents: Option<Vec<ChildData<'static, M>>>,
-    ) -> Result<DynamicWidget<'static, M>, ConversionError>
+        contents: WidgetContent<M>,
+    ) -> Result<DynamicWidget<M>, ConversionError>
     where
         M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let mut row = if let Some(contents) = contents {
-            let children: Vec<Element<'_, M>> = contents
-                .into_iter()
-                .filter_map(|item| {
-                    tracing::debug!("Row Child {:?}", item);
-                    Some(item.into())
-                })
-                .collect(); // Convert each item into Element
-
-            Row::with_children(children)
-        } else {
-            Row::new()
-        };
+        let mut row = Row::with_children(contents);
 
         for attr in attrs {
             row = match *attr {

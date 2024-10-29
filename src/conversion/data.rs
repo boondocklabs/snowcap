@@ -14,7 +14,7 @@ impl DataType {
         attrs: Attributes,
         //) -> Result<Element<'a, SnowcapMessage>, ConversionError>
         //) -> Result<Box<dyn Widget<M, iced::Theme, iced::Renderer>>, ConversionError>
-    ) -> Result<DynamicWidget<'a, M>, ConversionError>
+    ) -> Result<DynamicWidget<M>, ConversionError>
     where
         M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {

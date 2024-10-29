@@ -75,13 +75,7 @@ impl Provider for UrlProvider {
 
                 (node_id, url, data)
             },
-            |(node_id, url, data)| {
-                Event::Provider(ProviderEvent::UrlLoaded {
-                    node_id,
-                    url,
-                    data: data,
-                })
-            },
+            |(node_id, url, data)| Event::Provider(ProviderEvent::UrlLoaded { node_id, url, data }),
         )
     }
 

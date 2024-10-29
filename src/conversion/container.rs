@@ -1,4 +1,4 @@
-use crate::{attribute::AttributeValue, NodeId};
+use crate::{attribute::AttributeValue, tree_util::WidgetContent, NodeId};
 use iced::widget::Container;
 
 use crate::{
@@ -11,13 +11,12 @@ pub struct SnowcapContainer;
 impl SnowcapContainer {
     pub fn new<M>(
         attrs: Attributes,
-        content: DynamicWidget<'static, M>,
-        //) -> Result<Container<'a, M>, ConversionError>
-    ) -> Result<DynamicWidget<'static, M>, ConversionError>
+        content: WidgetContent<M>,
+    ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        M: std::fmt::Debug + From<(NodeId, WidgetMessage)>,
+        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let mut container = Container::new(content.into_element());
+        let mut container = Container::new(content);
         let mut style = iced::widget::container::Style::default();
 
         for attr in attrs {
