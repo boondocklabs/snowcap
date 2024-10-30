@@ -18,7 +18,7 @@ use crate::data::DataType;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::data::FileProvider;
 use crate::message::{Event, WidgetMessage};
-use crate::node::{SnowcapNode, SnowcapNodeData};
+use crate::node::{Content, SnowcapNode};
 use crate::{NodeId, Tree};
 
 pub(crate) mod attribute;
@@ -115,7 +115,7 @@ where
                 crate::NodeRef<M>,
             >::new();
 
-            let root = SnowcapNode::<M>::new(SnowcapNodeData::Root);
+            let root = SnowcapNode::<M>::new(Content::Root);
 
             builder = builder
                 .root(root, |root| parser.parse_pair(markup, root))
@@ -224,7 +224,7 @@ where
                     id = Some(container_id.to_string());
                 }
                 Rule::row | Rule::column | Rule::widget | Rule::stack => {
-                    let node = SnowcapNode::new(SnowcapNodeData::Container)
+                    let node = SnowcapNode::new(Content::Container)
                         .with_element_id(id)
                         .with_attrs(attrs);
 
@@ -283,7 +283,7 @@ where
         pair: Pair<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
     ) -> Result<(), ParseError> {
-        let node = SnowcapNode::new(SnowcapNodeData::Row);
+        let node = SnowcapNode::new(Content::Row);
 
         builder.child(node, |row| {
             debug!("Parsing column contents");
@@ -304,7 +304,7 @@ where
         pair: Pair<Rule>,
         builder: &mut SnowNodeBuilder<'b, M>,
     ) -> Result<(), ParseError> {
-        let node = SnowcapNode::new(SnowcapNodeData::Column);
+        let node = SnowcapNode::new(Content::Column);
 
         builder.child(node, |col| {
             debug!("Parsing column contents");
@@ -325,7 +325,7 @@ where
         pair: Pair<Rule>,
         builder: &'b mut SnowNodeBuilder<'_, M>,
     ) -> Result<(), ParseError> {
-        let node = SnowcapNode::new(SnowcapNodeData::Stack);
+        let node = SnowcapNode::new(Content::Stack);
 
         builder.child(node, |stack| {
             debug!("Parsing column contents");
@@ -350,7 +350,7 @@ where
         let mut inner = pair.into_inner();
         let label = inner.next().unwrap().as_str().to_string();
 
-        let node = SnowcapNode::new(SnowcapNodeData::Widget(label));
+        let node = SnowcapNode::new(Content::Widget(label));
 
         builder.child(node, |widget| {
             for pair in inner {
@@ -378,13 +378,13 @@ where
                     }
                     Rule::element_value => {
                         let value = Self::parse_value(pair.into_inner().next().unwrap())?;
-                        let node = SnowcapNode::new(SnowcapNodeData::Value(value));
+                        let node = SnowcapNode::new(Content::Value(value));
 
                         widget.child(node, |_| Ok(()))?;
                     }
                     Rule::array => {
                         let value = Self::parse_array(pair)?;
-                        let node = SnowcapNode::new(SnowcapNodeData::Value(value));
+                        let node = SnowcapNode::new(Content::Value(value));
 
                         widget.child(node, |_| Ok(()))?;
                     }

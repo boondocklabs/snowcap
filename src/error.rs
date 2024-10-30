@@ -1,4 +1,4 @@
-use std::cell::BorrowMutError;
+use std::cell::{BorrowError, BorrowMutError};
 use std::string::FromUtf8Error;
 
 use thiserror::Error;
@@ -34,6 +34,9 @@ pub enum ConversionError {
 
     #[error("downcast {0}")]
     Downcast(String),
+
+    #[error(transparent)]
+    Borrow(#[from] BorrowError),
 
     #[error(transparent)]
     BorrowMut(#[from] BorrowMutError),

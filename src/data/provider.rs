@@ -25,6 +25,7 @@ pub trait Provider: std::fmt::Debug + std::fmt::Display + MaybeSend + MaybeSync 
 
 #[derive(Debug, Clone)]
 pub enum ProviderEvent {
+    Initialized,
     Updated,
     FileLoaded {
         node_id: NodeId,

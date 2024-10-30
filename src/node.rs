@@ -1,5 +1,6 @@
 use colored::Colorize;
 use std::string::ToString;
+use tracing::debug;
 
 use std::{
     hash::{Hash, Hasher},
@@ -15,7 +16,7 @@ use crate::{attribute::Attributes, Value};
 #[derive(Debug, Hash, Clone, EnumDiscriminants, strum::Display)]
 #[strum_discriminants(derive(EnumIter, strum::Display, Hash, PartialOrd, Ord))]
 #[strum_discriminants(name(SnowcapNodeKind))]
-pub enum SnowcapNodeData {
+pub enum Content {
     None,
     Root,
     Container,
@@ -28,7 +29,7 @@ pub enum SnowcapNodeData {
     Value(Value),
 }
 
-impl SnowcapNodeData {
+impl Content {
     pub fn xxhash(&self) -> u64 {
         let mut hasher = Xxh64::new(0);
         self.hash(&mut hasher);
@@ -36,21 +37,33 @@ impl SnowcapNodeData {
     }
 }
 
-impl Default for SnowcapNodeData {
+impl Default for Content {
     fn default() -> Self {
         Self::None
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum State {
+    /// Node newly introduced to tree
+    New,
+    /// Node is dirty, needs to be updated
+    Dirty,
+    /// Node is clean
+    Clean,
+}
+
+/// Snowcap tree node. This is the node type used in the [`Arbutus`](https://github.com/boondocklabs/arbutus) tree
+/// which is built by the markup parser
 pub struct SnowcapNode<M>
 where
     M: 'static,
 {
     pub element_id: Option<String>,
     pub attrs: Option<Attributes>,
-    pub data: SnowcapNodeData,
+    content: Content,
     pub widget: Option<DynamicWidget<M>>,
-    pub dirty: bool,
+    state: State,
 }
 
 impl<M> Clone for SnowcapNode<M> {
@@ -58,9 +71,9 @@ impl<M> Clone for SnowcapNode<M> {
         SnowcapNode {
             element_id: self.element_id.clone(),
             attrs: self.attrs.clone(),
-            data: self.data.clone(),
+            content: self.content.clone(),
             widget: None,
-            dirty: false,
+            state: State::New,
         }
     }
 }
@@ -70,7 +83,7 @@ impl<M> std::hash::Hash for SnowcapNode<M> {
         //tracing::info!("Hashing SnowcapNode {}", self.data.to_string());
         self.element_id.hash(state);
         self.attrs.hash(state);
-        self.data.hash(state);
+        self.content.hash(state);
     }
 }
 
@@ -85,7 +98,7 @@ impl<M> std::fmt::Display for SnowcapNode<M> {
         write!(
             f,
             "{} {}",
-            self.data.to_string().cyan(),
+            self.content.to_string().cyan(),
             attr_display.green(),
         )
     }
@@ -94,11 +107,11 @@ impl<M> std::fmt::Display for SnowcapNode<M> {
 impl<M> Default for SnowcapNode<M> {
     fn default() -> Self {
         Self {
-            data: SnowcapNodeData::default(),
+            content: Content::default(),
             element_id: None,
             attrs: None,
             widget: None,
-            dirty: false,
+            state: State::New,
         }
     }
 }
@@ -111,36 +124,76 @@ where
         if let Some(element_id) = &self.element_id {
             write!(f, "[{element_id:?}] ")?
         }
-        write!(f, "{:?}", self.data)
+        write!(f, "{:?}", self.content)
     }
 }
 
 impl<M> SnowcapNode<M> {
-    pub fn new(data: SnowcapNodeData) -> Self {
-        SnowcapNode {
-            data,
-            element_id: None,
-            attrs: None,
-            widget: None,
-            dirty: false,
-        }
+    pub fn new(content: Content) -> Self {
+        Self::default().with_content(content)
     }
 
+    /// Add Content to this node
+    pub fn with_content(mut self, content: Content) -> Self {
+        self.content = content;
+        self
+    }
+
+    /// Add an element ID to this node
     pub fn with_element_id(mut self, id: Option<String>) -> Self {
         self.element_id = id;
         self
     }
 
+    /// Add attributes to this node
     pub fn with_attrs(mut self, attrs: Option<Attributes>) -> Self {
         self.attrs = attrs;
         self
     }
+
+    /// Set the dirty state of this node
+    pub fn set_dirty(&mut self, dirty: bool) {
+        match dirty {
+            true => self.set_state(State::Dirty),
+            false => self.set_state(State::Clean),
+        }
+    }
+
+    /// Return true if the node state is State::Dirty
+    pub fn is_dirty(&self) -> bool {
+        self.state == State::Dirty
+    }
+
+    /// Return true if the node state is State::New
+    pub fn is_new(&self) -> bool {
+        self.state == State::New
+    }
+
+    pub fn get_state(&self) -> State {
+        self.state
+    }
+
+    pub fn set_state(&mut self, state: State) {
+        //debug!("{} {:?} -> {:?}", self, self.state, state);
+        self.state = state
+    }
+
+    /// Get a reference to the node content
+    pub fn content(&self) -> &Content {
+        &self.content
+    }
+
+    /// Get a mutable reference to the node content
+    pub fn content_mut(&mut self) -> &mut Content {
+        &mut self.content
+    }
 }
 
+/// Deref into the inner [`Content`]
 impl<M> Deref for SnowcapNode<M> {
-    type Target = SnowcapNodeData;
+    type Target = Content;
 
     fn deref(&self) -> &Self::Target {
-        &self.data
+        &self.content
     }
 }

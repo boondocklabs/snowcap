@@ -41,8 +41,8 @@ use message::Event;
 use message::EventKind;
 use message::MessageDiscriminants;
 use message::WidgetMessage;
+use node::Content;
 use node::SnowcapNode;
-use node::SnowcapNodeData;
 use parking_lot::Mutex;
 use parser::value::ValueKind;
 use tracing::warn;
@@ -169,7 +169,7 @@ where
 
         for node in self.tree.lock().as_ref().unwrap().root() {
             let _: Result<(), ()> = node.with_data(|inner| {
-                if inner.widget.is_none() || inner.dirty == true {
+                if inner.widget.is_none() || inner.is_dirty() {
                     pending.push(node.clone());
                 }
                 Ok(())
@@ -191,7 +191,7 @@ where
 
         for node in self.tree.lock().as_ref().unwrap().root() {
             match &**node.node().data() {
-                SnowcapNodeData::Value(value) => {
+                Content::Value(value) => {
                     if let ValueKind::Dynamic {
                         provider: Some(provider),
                         ..
@@ -208,38 +208,6 @@ where
         }
 
         Ok(())
-    }
-
-    pub fn get_provider_tasks(&self) -> Vec<Task<Message<AppMessage>>> {
-        let mut tasks: Vec<Task<Message<AppMessage>>> = Vec::new();
-
-        if let Some(tree) = &*self.tree.as_ref().lock() {
-            for node in tree.root() {
-                let _: Result<(), ()> = node.with_data(|inner| {
-                    match &inner.data {
-                        SnowcapNodeData::Value(value) => {
-                            if let ValueKind::Dynamic {
-                                provider: Some(provider),
-                                ..
-                            } = value.inner()
-                            {
-                                let task = provider
-                                    .lock()
-                                    .init_task(provider.clone(), node.node().id().clone())
-                                    .map(|e| Message::<AppMessage>::Event(e))
-                                    .into();
-
-                                info!("Pushing provider init task for {provider:?}");
-                                tasks.push(task)
-                            }
-                        }
-                        _ => {}
-                    }
-                    Ok(())
-                });
-            }
-        }
-        tasks
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -321,15 +289,28 @@ where
     pub fn init(&mut self) -> Task<Message<AppMessage>> {
         let mut tasks = Vec::new();
 
-        let mut provider_tasks = self.get_provider_tasks();
-
-        tasks.append(&mut provider_tasks);
-
         // Start the event listener task
         tasks.push(Task::run(self.event_endpoint.take_outlet(), |ep_message| {
             info!("Received event from inlet {}", ep_message.from());
             Message::<AppMessage>::Event(ep_message.into_inner())
         }));
+
+        // Run the initial tree update, and get any tasks (Provider init tasks)
+        let tree_task = if let Some(tree) = &*self.tree.lock() {
+            profiling::scope!("build-widgets");
+            info!("{}", tree.root());
+            match WidgetCache::update_tree(tree) {
+                Ok(task) => task,
+                Err(e) => {
+                    error!("Failed to build widgets: {}", e);
+                    Task::none()
+                }
+            }
+        } else {
+            Task::none()
+        };
+
+        tasks.push(tree_task);
 
         info!("Starting init tasks");
 
@@ -338,7 +319,7 @@ where
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn reload_file(&mut self) -> Result<(), Error> {
-        use arbutus::TreeDiff;
+        use arbutus::{TreeDiff, TreeNode};
         use colored::Colorize;
 
         let filename = self.filename.clone().ok_or(Error::MissingAttribute(
@@ -346,13 +327,79 @@ where
         ))?;
 
         // Parse the new file into an IndexedTree
-        let new_tree =
+        let mut new_tree =
             IndexedTree::from_tree(SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?);
+
+        let _listener = new_tree
+            .on_event(|event| {
+                println!("NEW TREE EVENT {event:?}");
+            })
+            .ok();
 
         println!("{}", "Parsed New Tree".bright_magenta());
         println!("{}", new_tree.root());
 
         if let Some(tree) = &mut (*self.tree.lock()) {
+            // Register an event handler on the tree. It will automatically be deregistered when it goes out of scope.
+            // This handler listens for tree modification events, and marks the nodes as dirty in the snowcap node data,
+            // so the affected widgets will be rebuilt on the next update pass.
+            let _listener = tree
+                .on_event(|event| {
+                    println!("TREE EVENT {event:?}");
+                    match event {
+                        arbutus::TreeEvent::NodeRemoved { node } => {
+                            if let Some(parent) = node.clone().node_mut().parent_mut() {
+                                parent.node_mut().data_mut().set_state(node::State::Dirty)
+                            }
+                        }
+                        arbutus::TreeEvent::NodeReplaced { node } => node
+                            .clone()
+                            .node_mut()
+                            .data_mut()
+                            .set_state(node::State::New),
+                        arbutus::TreeEvent::SubtreeInserted { node } => {
+                            // Invalidate the whole subtree
+                            for mut n in node {
+                                n.node_mut().data_mut().set_state(node::State::New)
+                            }
+                        }
+                        arbutus::TreeEvent::ChildRemoved { parent, .. } => parent
+                            .clone()
+                            .node_mut()
+                            .data_mut()
+                            .set_state(node::State::Dirty),
+                        arbutus::TreeEvent::ChildrenRemoved { parent, .. } => parent
+                            .clone()
+                            .node_mut()
+                            .data_mut()
+                            .set_state(node::State::Dirty),
+                        arbutus::TreeEvent::ChildrenAdded { parent, children } => {
+                            for child in children {
+                                child
+                                    .clone()
+                                    .node_mut()
+                                    .data_mut()
+                                    .set_state(node::State::New)
+                            }
+                            parent
+                                .clone()
+                                .node_mut()
+                                .data_mut()
+                                .set_state(node::State::Dirty)
+                        }
+                        arbutus::TreeEvent::ChildReplaced { parent, index }
+                        | arbutus::TreeEvent::ChildInserted { parent, index } => {
+                            // Invalidate the child
+                            let mut parent = parent.clone();
+                            let mut node = parent.node_mut();
+                            let child = node.children_mut().unwrap().get_mut(*index).unwrap();
+
+                            child.node_mut().data_mut().set_state(node::State::New);
+                        }
+                    };
+                })
+                .unwrap();
+
             let mut diff = TreeDiff::new(tree.root().clone(), new_tree.root().clone());
             let patch = diff.diff();
             patch.patch_tree(tree);
@@ -360,7 +407,6 @@ where
             tree.reindex();
         }
 
-        //self.set_tree(new_tree)?;
         Ok(())
     }
 
@@ -372,7 +418,7 @@ where
         info!("Widget Message for NodeId: {node_id}");
 
         if let Some(node) = self.tree.lock().as_mut().unwrap().get_node_mut(node_id) {
-            node.node_mut().data_mut().dirty = true;
+            node.node_mut().data_mut().set_dirty(true);
         }
 
         match message {
@@ -496,15 +542,21 @@ where
             task
         };
 
-        if let Some(tree) = &*self.tree.lock() {
+        let tree_task = if let Some(tree) = &*self.tree.lock() {
             profiling::scope!("build-widgets");
             info!("{}", tree.root());
-            if let Err(e) = WidgetCache::build_widgets(tree) {
-                error!("Failed to build widgets: {}", e)
+            match WidgetCache::update_tree(tree) {
+                Ok(task) => task,
+                Err(e) => {
+                    error!("Failed to build widgets: {}", e);
+                    Task::none()
+                }
             }
-        }
+        } else {
+            Task::none()
+        };
 
-        task
+        tree_task.chain(task)
     }
 
     #[profiling::function]

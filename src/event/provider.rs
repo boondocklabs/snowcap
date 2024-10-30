@@ -69,8 +69,8 @@ where
             .ok_or(Error::NodeNotFound(node_id.clone()))?;
 
         node.with_data_mut(|data_node| {
-            let res = match &mut data_node.data {
-                crate::node::SnowcapNodeData::Value(value) => match data {
+            let res = match data_node.content_mut() {
+                crate::node::Content::Value(value) => match data {
                     crate::data::FileData::Svg(handle) => match value.inner_mut() {
                         ValueKind::Dynamic { data, provider: _ } => {
                             data.replace(Arc::new(DataType::Svg(handle)));
@@ -114,7 +114,7 @@ where
             };
 
             if res.is_ok() {
-                data_node.dirty = true;
+                data_node.set_dirty(true);
             }
 
             res
@@ -138,6 +138,7 @@ where
     ) -> Result<iced::Task<M>, crate::Error> {
         debug!("{event:?}");
         let task = match event {
+            ProviderEvent::Initialized => Task::none(),
             ProviderEvent::Updated => todo!(),
             ProviderEvent::FileLoaded { node_id, data } => self.update_filedata(node_id, data)?,
             ProviderEvent::UrlLoaded {

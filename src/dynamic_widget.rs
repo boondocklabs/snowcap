@@ -18,7 +18,11 @@ pub struct WidgetRef<M> {
 
 impl<M> Drop for WidgetRef<M> {
     fn drop(&mut self) {
-        debug!("{} {}", "WidgetRef dropped".bright_magenta(), self.node_id);
+        debug!(
+            "{} WidgetRef NodeID: {}",
+            "Dropped".bright_magenta(),
+            self.node_id
+        );
     }
 }
 
@@ -32,7 +36,7 @@ pub struct DynamicWidget<M> {
 
 impl<M> Clone for DynamicWidget<M> {
     fn clone(&self) -> Self {
-        tracing::debug!("Cloning DynamicWidget {:?}", self.node_id);
+        //tracing::debug!("Cloning DynamicWidget {:?}", self.node_id);
         DynamicWidget {
             node_id: self.node_id,
             widget: self.widget.clone(),
@@ -67,7 +71,7 @@ where
             widget: guard,
             node_id: self.node_id.unwrap(),
         };
-        debug!("New WidgetRef node {:?}", self.node_id);
+        //debug!("New WidgetRef node {:?}", self.node_id);
         Ok(Element::new(widget_ref))
     }
 }
