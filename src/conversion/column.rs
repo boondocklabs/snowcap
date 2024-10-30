@@ -1,4 +1,4 @@
-use iced::{widget::Column, Element};
+use iced::widget::Column;
 
 use crate::{
     attribute::{AttributeValue, Attributes},

@@ -245,7 +245,6 @@ impl SnowcapWidget {
                 Ok(DynamicWidget::default().with_widget(toggler))
             }
 
-            /*
             "themer" => {
                 let theme =
                     if let Some(AttributeValue::Theme(theme)) = attrs.get(AttributeKind::Theme)? {
@@ -263,7 +262,6 @@ impl SnowcapWidget {
                 );
                 Ok(DynamicWidget::default().with_widget(themer))
             }
-            */
             "pick-list" => {
                 if let WidgetContent::Value(value) = content {
                     let current = if let Some(AttributeValue::Selected(selected)) =

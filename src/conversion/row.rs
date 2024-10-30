@@ -6,7 +6,7 @@ use crate::{
     tree_util::WidgetContent,
     NodeId,
 };
-use iced::{widget::Row, Element};
+use iced::widget::Row;
 use tracing::warn;
 
 pub struct SnowcapRow;

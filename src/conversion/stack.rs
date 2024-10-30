@@ -1,4 +1,4 @@
-use iced::{widget::Stack, Element};
+use iced::widget::Stack;
 
 use crate::{
     attribute::{AttributeValue, Attributes},

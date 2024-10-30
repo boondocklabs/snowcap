@@ -289,7 +289,7 @@ where
             debug!("Parsing column contents");
             let (id, attrs) = self.parse_element_list(pair.into_inner(), row)?;
             row.node_mut()
-                .with_data_mut(|mut data| {
+                .with_data_mut(|data| {
                     data.element_id = id;
                     data.attrs = attrs;
                     Ok::<(), ()>(())
@@ -310,7 +310,7 @@ where
             debug!("Parsing column contents");
             let (id, attrs) = self.parse_element_list(pair.into_inner(), col)?;
             col.node_mut()
-                .with_data_mut(|mut data| {
+                .with_data_mut(|data| {
                     data.element_id = id;
                     data.attrs = attrs;
                     Ok::<(), ()>(())
@@ -332,7 +332,7 @@ where
             let (id, attrs) = self.parse_element_list(pair.into_inner(), stack)?;
             stack
                 .node_mut()
-                .with_data_mut(|mut data| {
+                .with_data_mut(|data| {
                     data.element_id = id;
                     data.attrs = attrs;
                     Ok::<(), ()>(())
@@ -360,7 +360,7 @@ where
                         let widget_id = pair.into_inner().as_str();
                         widget
                             .node_mut()
-                            .with_data_mut(|mut data| {
+                            .with_data_mut(|data| {
                                 data.element_id = Some(widget_id.to_string());
                                 Ok::<(), ()>(())
                             })
@@ -370,7 +370,7 @@ where
                         let attrs = Self::parse_attributes(pair)?;
                         widget
                             .node_mut()
-                            .with_data_mut(|mut data| {
+                            .with_data_mut(|data| {
                                 data.attrs = Some(attrs);
                                 Ok::<(), ()>(())
                             })

@@ -247,6 +247,6 @@ mod tests {
 
         println!("{}", tree.root());
 
-        WidgetCache::build_widgets(&tree);
+        WidgetCache::build_widgets(&tree).unwrap();
     }
 }

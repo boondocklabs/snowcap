@@ -2,19 +2,11 @@ use arbutus::TreeNode as _;
 use arbutus::TreeNodeRef as _;
 use tracing::debug;
 use tracing::debug_span;
-use tracing::info;
 
-use crate::conversion::stack::SnowcapStack;
-use crate::parser::value::ValueKind;
 use crate::tree_util::WidgetContent;
-use crate::{
-    attribute::Attributes, message::WidgetMessage, node::SnowcapNodeData, ConversionError,
-    DynamicWidget, NodeId, NodeRef,
-};
+use crate::{message::WidgetMessage, ConversionError, DynamicWidget, NodeId, NodeRef};
 
-use super::{
-    column::SnowcapColumn, container::SnowcapContainer, row::SnowcapRow, widget::SnowcapWidget,
-};
+use super::widget::SnowcapWidget;
 
 impl<'a, M> DynamicWidget<M>
 where
@@ -50,7 +42,7 @@ where
 
     pub fn builder(
         node: NodeRef<M>,
-        content: WidgetContent<M>,
+        _content: WidgetContent<M>,
     ) -> Result<DynamicWidget<M>, ConversionError> {
         debug_span!("DynamicWidget").in_scope(|| {
             debug!("Building node_id={:?}", node.node().id());

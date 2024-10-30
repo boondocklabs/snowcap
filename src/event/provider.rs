@@ -4,7 +4,7 @@ use arbutus::TreeNodeRef as _;
 
 use iced::Task;
 use parking_lot::Mutex;
-use tracing::{debug, error};
+use tracing::debug;
 
 use crate::{
     data::{provider::ProviderEvent, DataType, FileData, MarkdownItems},
@@ -140,9 +140,11 @@ where
         let task = match event {
             ProviderEvent::Updated => todo!(),
             ProviderEvent::FileLoaded { node_id, data } => self.update_filedata(node_id, data)?,
-            ProviderEvent::UrlLoaded { node_id, url, data } => {
-                self.update_filedata(node_id, data)?
-            }
+            ProviderEvent::UrlLoaded {
+                node_id,
+                url: _,
+                data,
+            } => self.update_filedata(node_id, data)?,
             ProviderEvent::Error(_) => todo!(),
         };
 

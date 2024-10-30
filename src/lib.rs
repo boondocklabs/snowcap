@@ -8,7 +8,6 @@ mod event;
 mod message;
 mod node;
 mod parser;
-mod tree;
 mod tree_util;
 mod util;
 mod widget;
