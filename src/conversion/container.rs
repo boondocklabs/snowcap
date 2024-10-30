@@ -1,92 +1,52 @@
-use iced::{widget::Container, Background, Element};
+use crate::{attribute::AttributeValue, tree_util::WidgetContent, NodeId};
+use iced::widget::Container;
 
 use crate::{
-    attribute::Attributes,
-    error::ConversionError,
-    parser::{color::ColorParser, gradient::GradientParser, TreeNode},
-    Message, Value,
+    attribute::Attributes, dynamic_widget::DynamicWidget, error::ConversionError,
+    message::WidgetMessage,
 };
 
 pub struct SnowcapContainer;
 
 impl SnowcapContainer {
-    pub fn convert<'a, SnowcapMessage, AppMessage>(
-        attrs: &Attributes,
-        content: &'a TreeNode<AppMessage>,
-    ) -> Result<Element<'a, SnowcapMessage>, ConversionError>
+    pub fn new<M>(
+        attrs: Attributes,
+        content: WidgetContent<M>,
+    ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: 'a + Clone + std::fmt::Debug,
+        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let content: Element<'a, SnowcapMessage> = content.try_into()?;
-
         let mut container = Container::new(content);
-
         let mut style = iced::widget::container::Style::default();
 
         for attr in attrs {
-            let value = &*attr.value();
-            container = match attr.name().as_str() {
-                "padding" => {
-                    let padding: iced::Padding = value.try_into()?;
-                    container.padding(padding)
+            (container, style) = match *attr {
+                AttributeValue::TextColor(color) => (container, style.color(color)),
+                AttributeValue::Border(border) => (container, style.border(border)),
+                AttributeValue::Shadow(shadow) => (container, style.shadow(shadow)),
+                AttributeValue::Background(background) => (container, style.background(background)),
+                AttributeValue::HorizontalAlignment(horizontal) => {
+                    (container.align_x(horizontal), style)
                 }
-
-                "width" => {
-                    let width: iced::Length = value.try_into()?;
-                    container.width(width)
+                AttributeValue::VerticalAlignment(vertical) => (container.align_y(vertical), style),
+                AttributeValue::Padding(padding) => (container.padding(padding), style),
+                AttributeValue::MaxWidth(pixels) => (container.max_width(pixels), style),
+                AttributeValue::WidthLength(length) => (container.width(length), style),
+                AttributeValue::HeightLength(length) => (container.height(length), style),
+                AttributeValue::WidthPixels(pixels) => (container.width(pixels), style),
+                AttributeValue::HeightPixels(pixels) => (container.height(pixels), style),
+                AttributeValue::Clip(clip) => (container.clip(clip), style),
+                _ => {
+                    return Err(ConversionError::UnsupportedAttribute(
+                        attr,
+                        "Container".into(),
+                    ))
                 }
-
-                "height" => {
-                    let height: iced::Length = value.try_into()?;
-                    container.height(height)
-                }
-
-                "max-width" => {
-                    let width: iced::Pixels = value.try_into()?;
-                    container.max_width(width)
-                }
-
-                "max-height" => {
-                    let height: iced::Pixels = value.try_into()?;
-                    container.max_height(height)
-                }
-
-                "align-x" => {
-                    let align: iced::alignment::Horizontal = value.try_into()?;
-                    container.align_x(align)
-                }
-
-                "align-y" => {
-                    let align: iced::alignment::Vertical = value.try_into()?;
-                    container.align_y(align)
-                }
-
-                "bg" => {
-                    if let Value::String(str) = value {
-                        if let Ok(color) = ColorParser::parse_str(str) {
-                            style.background = Some(Background::Color(color));
-                        } else if let Ok(gradient) = GradientParser::parse_str(str) {
-                            style.background = Some(Background::Gradient(gradient));
-                        }
-                    }
-                    container
-                }
-
-                "text-color" => {
-                    if let Value::String(str) = value {
-                        let color = ColorParser::parse_str(str)?;
-                        style.text_color = Some(color);
-                    }
-                    container
-                }
-
-                _ => return Err(ConversionError::UnsupportedAttribute(attr.name().clone())),
             };
         }
 
         container = container.style(move |_theme| style);
 
-        Ok(container.into())
+        Ok(DynamicWidget::default().with_widget(container))
     }
 }

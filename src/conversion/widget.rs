@@ -1,202 +1,302 @@
-use iced::widget::{Button, PickList, Rule, Space, Themer, Toggler};
-use iced::{widget::Text, Element};
-use iced::{Length, Pixels, Theme};
-use tracing::{debug, info, warn};
+use crate::attribute::{AttributeKind, AttributeValue};
+use crate::data::DataType;
+use crate::parser::value::ValueKind;
+use crate::tree_util::WidgetContent;
+use crate::util::ElementWrapper;
+use crate::NodeId;
+use iced::widget::{Button, PickList, QRCode, Rule, Space, Svg, Themer, Toggler};
+use iced::widget::{Image, Text};
+use tracing::{error, warn};
 
 use crate::attribute::Attributes;
+use crate::dynamic_widget::DynamicWidget;
 use crate::error::ConversionError;
-use crate::message::Message;
-use crate::parser::TreeNode;
-use crate::parser::Value;
-use crate::MarkupTree;
+use crate::message::WidgetMessage;
 
 pub struct SnowcapWidget;
 
 impl SnowcapWidget {
-    pub fn convert<'a, SnowcapMessage, AppMessage>(
-        node: &'a TreeNode<AppMessage>,
-        name: &String,
-        attrs: &'a Attributes,
-        content: &'a TreeNode<AppMessage>,
-    ) -> Result<Element<'a, SnowcapMessage>, ConversionError>
+    pub fn loading<'a, M>() -> DynamicWidget<M> {
+        DynamicWidget::default()
+            .with_widget(Text::new("Loading"))
+            .with_node_id(8989898)
+    }
+
+    pub fn new<'a, M>(
+        node_id: NodeId,
+        name: String,
+        element_id: Option<String>,
+        attrs: Attributes,
+        content: WidgetContent<M>,
+    ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: 'a + Clone + std::fmt::Debug,
+        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        // Handle any nodes with a value of Value::Data
-        // as we can infer the widget type from the DataType
-        // using .to_widget()
-        match content.inner() {
-            MarkupTree::Value(value) => match &*value.borrow() {
-                Value::Data {
-                    data: Some(data), ..
-                } => {
-                    let arc = (*data).clone();
-                    return crate::data::DataType::to_widget(arc, attrs);
-                }
-                Value::Data { data: None, .. } => {
-                    // No data is available, so provide a placeholder widget
-                    // TODO: Some kind of spinner?
-                    return Ok(Text::new("Data Not loaded").into());
-                }
-                _ => {}
-            },
-            /*
-            MarkupTree::Value(Value::Data {
-                data: Some(data), ..
-            }) => {
-                return data.to_widget(attrs);
-            }
-            MarkupTree::Value(Value::Data { data: None, .. }) => {
-            }
-            */
-            _ => {}
-        }
-
         match name.as_str() {
-            "text" => {
-                let mut text = Text::new(content.inner());
-
-                for attr in attrs {
-                    match attr.name().as_str() {
-                        "size" => {
-                            let pixels: iced::Pixels = attr.try_into()?;
-
-                            // cosmic-text will panic if the text size is too small
-                            if pixels.0 < 2.0 {
-                                warn!("text size too small. clamping.");
-                                text = text.size(2.0);
+            "image" => {
+                if let WidgetContent::Value(value) = content {
+                    match value.inner() {
+                        ValueKind::String(_) => todo!(),
+                        ValueKind::Float(_) => todo!(),
+                        ValueKind::Integer(_) => todo!(),
+                        ValueKind::Boolean(_) => todo!(),
+                        ValueKind::Array(_vec) => todo!(),
+                        ValueKind::Dynamic { data, provider: _ } => {
+                            if let Some(data) = data {
+                                if let DataType::Image(handle) = &**data {
+                                    Ok(DynamicWidget::default().with_widget(Image::new(handle)))
+                                } else {
+                                    Ok(SnowcapWidget::loading())
+                                }
                             } else {
-                                text = text.size(pixels);
+                                Ok(SnowcapWidget::loading())
                             }
                         }
-                        _ => {}
+                    }
+                } else {
+                    Err(ConversionError::InvalidType(
+                        "Image expecting ChildData::Value".into(),
+                    ))
+                }
+            }
+            "svg" => {
+                if let WidgetContent::Value(value) = content {
+                    match value.inner() {
+                        ValueKind::String(_) => todo!(),
+                        ValueKind::Float(_) => todo!(),
+                        ValueKind::Integer(_) => todo!(),
+                        ValueKind::Boolean(_) => todo!(),
+                        ValueKind::Array(_vec) => todo!(),
+                        ValueKind::Dynamic { data, provider: _ } => {
+                            if let Some(data) = data {
+                                if let DataType::Svg(handle) = &**data {
+                                    Ok(DynamicWidget::default()
+                                        .with_widget(Svg::new(handle.clone())))
+                                } else {
+                                    Ok(SnowcapWidget::loading())
+                                }
+                            } else {
+                                Ok(SnowcapWidget::loading())
+                            }
+                        }
+                    }
+                } else {
+                    Err(ConversionError::InvalidType(
+                        "Svg expecting ChildData::Value".into(),
+                    ))
+                }
+            }
+            "markdown" => {
+                if let WidgetContent::Value(value) = content {
+                    match value.inner() {
+                        ValueKind::Dynamic { data, provider: _ } => {
+                            if let Some(data) = data {
+                                if let DataType::Markdown(markdown_items) = &**data {
+                                    let markdown = iced::widget::markdown(
+                                        markdown_items.into_iter(),
+                                        iced::widget::markdown::Settings::default(),
+                                        iced::widget::markdown::Style::from_palette(
+                                            iced::Theme::default().palette(),
+                                        ),
+                                    )
+                                    .map(move |url| {
+                                        M::from((node_id, WidgetMessage::Markdown(url)))
+                                    });
+
+                                    Ok(DynamicWidget::default()
+                                        .with_widget(ElementWrapper::new(markdown)))
+                                } else {
+                                    Ok(SnowcapWidget::loading())
+                                }
+                            } else {
+                                Ok(SnowcapWidget::loading())
+                            }
+                        }
+                        _ => Err(ConversionError::InvalidType(
+                            "unexpected markdown {value:?}".into(),
+                        )),
+                    }
+                } else {
+                    Err(ConversionError::InvalidType(
+                        "unexpected markdown {content:?} expecting ChildData::Value".into(),
+                    ))
+                }
+            }
+            "qr-code" => {
+                if let WidgetContent::Value(value) = content {
+                    let data = value
+                        .dynamic()?
+                        .clone()
+                        .ok_or(ConversionError::Missing("qr data".into()))?;
+
+                    if let DataType::QrCode(qr_data) = &*data {
+                        let mut qr = QRCode::new(qr_data.clone());
+
+                        for attr in attrs {
+                            qr = match *attr {
+                                crate::attribute::AttributeValue::CellSize(pixels) => {
+                                    qr.cell_size(pixels)
+                                }
+                                _ => {
+                                    warn!("Unsupported QRCode attribute {:?}", attr);
+                                    qr
+                                }
+                            };
+                        }
+
+                        Ok(DynamicWidget::default().with_widget(qr))
+                    } else {
+                        Ok(SnowcapWidget::loading())
+                    }
+                } else {
+                    error!("QrCode got {content:#?}");
+                    Err(ConversionError::InvalidType(
+                        "QrCode expecting WidgetContent::Value".into(),
+                    ))
+                }
+            }
+            "text" => {
+                let mut text = if let WidgetContent::Value(value) = content {
+                    Text::new(value.inner())
+                } else {
+                    Text::new("X")
+                };
+
+                let mut style = iced::widget::text::Style::default();
+
+                //TODO add shaping, font
+
+                for attr in attrs {
+                    (text, style) = match *attr {
+                        AttributeValue::TextColor(color) => {
+                            style.color = Some(color);
+                            (text.color(color), style)
+                        }
+                        AttributeValue::HorizontalAlignment(horizontal) => {
+                            (text.align_x(horizontal), style)
+                        }
+                        AttributeValue::VerticalAlignment(vertical) => {
+                            (text.align_y(vertical), style)
+                        }
+                        AttributeValue::WidthLength(length) => (text.width(length), style),
+                        AttributeValue::WidthPixels(pixels) => (text.width(pixels), style),
+                        AttributeValue::HeightLength(length) => (text.height(length), style),
+                        AttributeValue::HeightPixels(pixels) => (text.height(pixels), style),
+                        AttributeValue::Size(pixels) => (text.size(pixels), style),
+                        AttributeValue::Wrapping(wrapping) => (text.wrapping(wrapping), style),
+                        AttributeValue::Shaping(shaping) => (text.shaping(shaping), style),
+                        _ => {
+                            warn!("Unsupported Text attribute {:?}", attr);
+                            (text, style)
+                        }
                     };
                 }
 
-                Ok(text.into())
+                //Ok(Box::new(text.style(move |_theme| style)))
+                //Ok(Box::new(text))
+                Ok(DynamicWidget::default().with_widget(text))
             }
-
             "space" => {
-                let width: Length = if let Some(width) = attrs.get("width") {
-                    width.try_into()?
-                } else {
-                    Length::Fixed(0.0)
-                };
-
-                let height: Length = if let Some(height) = attrs.get("height") {
-                    height.try_into()?
-                } else {
-                    Length::Fixed(0.0)
-                };
-
-                let space = Space::new(width, height);
-
-                Ok(space.into())
+                let space = Space::new(1, 1);
+                //Ok(Box::new(space))
+                Ok(DynamicWidget::default().with_widget(space))
             }
 
             "button" => {
-                let content: Element<'a, SnowcapMessage> = content.try_into()?;
-
-                let button = Button::new(content).on_press_with(|| {
-                    SnowcapMessage::from(Message::Button(node.element_id().clone()))
+                let button = Button::new(content).on_press_with(move || {
+                    M::from((node_id, WidgetMessage::Button(element_id.clone())))
                 });
 
-                Ok(button.into())
+                Ok(DynamicWidget::default().with_widget(button))
             }
-
-            "rule-horizontal" => {
-                let height: Pixels = attrs
-                    .get("height")
-                    .ok_or_else(|| ConversionError::Missing("height".to_string()))?
-                    .try_into()?;
-                debug!("[Rule horizontal height={height:?}]");
-                Ok(Rule::horizontal(height).into())
-            }
-
-            "rule-vertical" => {
-                let width: Pixels = attrs
-                    .get("width")
-                    .ok_or_else(|| ConversionError::Missing("width".to_string()))?
-                    .try_into()?;
-                Ok(Rule::vertical(width).into())
-            }
+            "rule-horizontal" => Ok(DynamicWidget::default().with_widget(Rule::horizontal(1))),
+            "rule-vertical" => Ok(DynamicWidget::default().with_widget(Rule::vertical(1))),
 
             "toggler" => {
-                let is_toggled: bool = if let Some(width) = attrs.get("toggled") {
-                    width.try_into()?
+                let is_toggled: bool = if let Some(AttributeValue::Toggled(toggled)) =
+                    attrs.clone().get(AttributeKind::Toggled)?
+                {
+                    toggled
                 } else {
                     false
                 };
 
-                let mut toggler = Toggler::new(is_toggled).on_toggle(|toggled| {
-                    attrs.set("toggled", Value::Boolean(toggled));
-                    SnowcapMessage::from(Message::Toggler {
-                        id: node.element_id().clone(),
-                        toggled,
-                    })
+                let _attrs = attrs.clone();
+                let mut toggler = Toggler::new(is_toggled).on_toggle(move |toggled| {
+                    _attrs.set(AttributeValue::Toggled(toggled)).unwrap();
+                    M::from((
+                        node_id,
+                        WidgetMessage::Toggler {
+                            id: element_id.clone(),
+                            toggled,
+                        },
+                    ))
                 });
 
                 for attr in attrs {
-                    toggler = match attr.name().as_str() {
-                        "size" => {
-                            let pixels: iced::Pixels = attr.try_into()?;
-                            toggler.size(pixels)
-                        }
-                        "label" => toggler.label(attr),
-                        _ => toggler,
+                    toggler = match (*attr).clone() {
+                        AttributeValue::Size(pixels) => toggler.size(pixels),
+                        AttributeValue::Label(label) => toggler.label(label),
+                        AttributeValue::Toggled(_) => toggler,
+                        _ => todo!(),
                     };
                 }
 
-                Ok(toggler.into())
+                Ok(DynamicWidget::default().with_widget(toggler))
             }
-            "themer" => {
-                // Create an iced::Theme from the name in the "theme" attribute
-                let theme: Theme = attrs
-                    .get("theme")
-                    .ok_or_else(|| ConversionError::Missing("theme".to_string()))?
-                    .try_into()?;
 
-                let content: Element<'a, SnowcapMessage, Theme> = content.try_into()?;
+            "themer" => {
+                let theme =
+                    if let Some(AttributeValue::Theme(theme)) = attrs.get(AttributeKind::Theme)? {
+                        Some(theme)
+                    } else {
+                        None
+                    };
 
                 let themer = Themer::new(
                     move |old_theme| {
-                        info!("Themer from {:?} to {:?}", old_theme, theme);
-                        theme.clone()
+                        tracing::info!("Themer from {:?} to {:?}", old_theme, theme);
+                        theme.as_ref().unwrap().clone()
                     },
                     content,
                 );
-                Ok(themer.into())
+                Ok(DynamicWidget::default().with_widget(themer))
             }
-            "pick-list" => match content.inner() {
-                MarkupTree::Value(value) => {
-                    if let Value::Array(values) = &*value.borrow() {
-                        let current = if let Some(attr) = attrs.get("selected") {
-                            Some((*attr.value()).to_string().clone())
-                        } else {
-                            None
-                        };
-
-                        let values: Vec<String> =
-                            values.into_iter().map(|x| x.to_string()).collect();
-
-                        let picklist = PickList::new(values, current, |selected| {
-                            attrs.set("current_selection", Value::String(selected.clone()));
-                            SnowcapMessage::from(Message::PickListSelected {
-                                id: node.element_id().clone(),
-                                selected,
-                            })
-                        });
-
-                        Ok(picklist.into())
+            "pick-list" => {
+                if let WidgetContent::Value(value) = content {
+                    let current = if let Some(AttributeValue::Selected(selected)) =
+                        attrs.get(AttributeKind::Selected)?
+                    {
+                        Some(selected)
                     } else {
-                        panic!("Expecting Value::Array")
-                    }
+                        None
+                    };
+
+                    let values: Vec<String> =
+                        value.array()?.into_iter().map(|x| x.to_string()).collect();
+
+                    let _attrs = attrs.clone();
+                    let picklist = PickList::new(values, current, move |selected| {
+                        _attrs
+                            .set(AttributeValue::Selected(selected.clone()))
+                            .unwrap();
+
+                        M::from((
+                            node_id,
+                            WidgetMessage::PickListSelected {
+                                id: element_id.clone(),
+                                selected,
+                            },
+                        ))
+                    });
+
+                    Ok(DynamicWidget::default().with_widget(picklist))
+                } else {
+                    Err(ConversionError::InvalidType("expecting value array".into()))
                 }
-                _ => panic!("Expecting MarkupTree::Value"),
-            },
+            }
             _ => {
-                return Err(ConversionError::UnsupportedAttribute(format!(
+                return Err(ConversionError::UnsupportedWidget(format!(
                     "Unhandled element type {name}"
                 )))
             }

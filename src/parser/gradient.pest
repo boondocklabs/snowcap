@@ -4,14 +4,10 @@ float = @{
     ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)
 }
 
-integer = @{
-    ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
-}
-
 string = @{ (!("@") ~ ANY)* }
 
 stop = { string ~ "@" ~ float }
 
-stops = { "[" ~ stop ~ ("," ~ stop){0,7} ~ "]" }
+stops = { "[" ~ stop ~ ("," ~ stop){0, 7} ~ "]" }
 
-gradient = { SOI ~ "gradient(" ~ float ~ "," ~ stops ~ ")" ~ EOI }
+gradient = { SOI ~ float ~ "," ~ stops ~ EOI }

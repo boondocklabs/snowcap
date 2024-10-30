@@ -6,10 +6,10 @@ color_hex_rgba     = { ASCII_HEX_DIGIT{4} }
 color_hex_rgb      = { ASCII_HEX_DIGIT{3} }
 color_hex          = { "#" ~ (color_hex_rrggbbaa | color_hex_rrggbb | color_hex_rgba | color_hex_rgb) }
 
-color_rgba  = { "color(" ~ float ~ ("," ~ float){3} ~ ")" }
-color_rgb   = { "color(" ~ float ~ ("," ~ float){2} ~ ")" }
-color_rgba8 = { "color(" ~ integer ~ ("," ~ integer){2} ~ "," ~ float ~ ")" }
-color_rgb8  = { "color(" ~ integer ~ ("," ~ integer){2} ~ ")" }
+color_rgba  = { float ~ ("," ~ float){3} }
+color_rgb   = { float ~ ("," ~ float){2} }
+color_rgba8 = { integer ~ ("," ~ integer){2} ~ "," ~ float }
+color_rgb8  = { integer ~ ("," ~ integer){2} }
 
 float = @{
     ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)

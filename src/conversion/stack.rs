@@ -1,37 +1,34 @@
-use iced::{widget::Stack, Element};
+use iced::widget::Stack;
 
-use crate::{attribute::Attributes, error::ConversionError, parser::TreeNode, Message};
+use crate::{
+    attribute::{AttributeValue, Attributes},
+    dynamic_widget::DynamicWidget,
+    error::ConversionError,
+    message::WidgetMessage,
+    tree_util::WidgetContent,
+    NodeId,
+};
 
 pub struct SnowcapStack;
 
 impl SnowcapStack {
-    pub fn convert<'a, SnowcapMessage, AppMessage>(
-        attrs: &Attributes,
-        contents: &'a Vec<TreeNode<AppMessage>>,
-    ) -> Result<Element<'a, SnowcapMessage>, ConversionError>
+    pub fn convert<M>(
+        attrs: Attributes,
+        contents: WidgetContent<M>,
+    ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: 'a + Clone + std::fmt::Debug,
+        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let children: Result<Vec<Element<'a, SnowcapMessage>>, ConversionError> =
-            contents.into_iter().map(|item| item.try_into()).collect(); // Convert each item into Element
-
-        let mut stack = Stack::with_children(children?);
+        let mut stack = Stack::with_children(contents);
 
         for attr in attrs {
-            stack = match attr.name().as_str() {
-                "width" => {
-                    let width: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
-                    stack.width(width?)
-                }
-                "height" => {
-                    let height: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
-                    stack.height(height?)
-                }
-                _ => return Err(ConversionError::UnsupportedAttribute(attr.name().clone())),
-            }
+            stack = match *attr.value() {
+                AttributeValue::WidthLength(length) => stack.width(length),
+                AttributeValue::HeightLength(length) => stack.height(length),
+                _ => return Err(ConversionError::UnsupportedAttribute(attr, "Stack".into())),
+            };
         }
 
-        Ok(stack.into())
+        Ok(DynamicWidget::default().with_widget(stack))
     }
 }

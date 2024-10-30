@@ -1,17 +1,27 @@
+use std::cell::{BorrowError, BorrowMutError};
 use std::string::FromUtf8Error;
 
 use thiserror::Error;
 
-use crate::parser::error::ParseError;
-use crate::parser::{NodeId, Rule};
+use crate::attribute::Attribute;
+use crate::parser::error::ParseErrorContext;
+
+#[derive(Error, Debug)]
+pub enum SyncError {
+    #[error("Deadlock {0}")]
+    Deadlock(String),
+}
 
 #[derive(Error, Debug)]
 pub enum ConversionError {
     #[error("invalid type {0}")]
     InvalidType(String),
 
-    #[error("unsupported attribute {0}")]
-    UnsupportedAttribute(String),
+    #[error("{0:?} for {1:?}")]
+    UnsupportedAttribute(Attribute, String),
+
+    #[error("unsupported widget {0}")]
+    UnsupportedWidget(String),
 
     #[error("missing {0}")]
     Missing(String),
@@ -20,13 +30,25 @@ pub enum ConversionError {
     Unknown(String),
 
     #[error(transparent)]
-    Parse(#[from] ParseError),
+    Parse(#[from] ParseErrorContext),
+
+    #[error("downcast {0}")]
+    Downcast(String),
+
+    #[error(transparent)]
+    Borrow(#[from] BorrowError),
+
+    #[error(transparent)]
+    BorrowMut(#[from] BorrowMutError),
+
+    #[error(transparent)]
+    Sync(#[from] SyncError),
 }
 
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    Parse(#[from] ParseError),
+    Parse(#[from] ParseErrorContext),
 
     #[error(transparent)]
     Conversion(#[from] ConversionError),
@@ -36,9 +58,6 @@ pub enum Error {
 
     #[error("Required attribute {0} missing")]
     MissingAttribute(String),
-
-    #[error(transparent)]
-    Pest(#[from] pest::error::Error<Rule>),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -53,7 +72,7 @@ pub enum Error {
     Encoding(FromUtf8Error),
 
     #[error("Node {0} Not Found")]
-    NodeNotFound(NodeId),
+    NodeNotFound(arbutus::NodeId),
 
     #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
@@ -62,4 +81,10 @@ pub enum Error {
     #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
     Notify(#[from] notify::Error),
+
+    #[error(transparent)]
+    BorrowMut(#[from] BorrowMutError),
+
+    #[error(transparent)]
+    Sync(#[from] SyncError),
 }

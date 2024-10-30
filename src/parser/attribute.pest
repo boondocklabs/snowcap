@@ -1,0 +1,139 @@
+WHITESPACE        = _{ " " | "\t" | "\r" | "\n" }
+COMMENT           = _{ SingleLineComment }
+SingleLineComment =  { "//" ~ (!"\n" ~ ANY)* }
+
+string = ${ "\"" ~ inner ~ "\"" }
+inner  = @{ char* }
+char   =  {
+    !("\"" | "\\") ~ ANY
+  | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+float = @{
+    "-"? ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)? ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)?
+}
+
+integer = @{ ASCII_DIGIT* }
+
+boolean = { true | false }
+true    = { ^"true" }
+false   = { ^"false" }
+
+glyph    = { ^"glyph" }
+word     = { ^"word" }
+none     = { ^"none" }
+either   = { ^"either" | ^"both" }
+basic    = { ^"basic" }
+advanced = { ^"advanced" }
+
+attributes = _{
+    attr_padding
+  | attr_width
+  | attr_height
+  | attr_max_width
+  | attr_max_height
+  | attr_size
+  | attr_align
+  | attr_align_x
+  | attr_align_y
+  | attr_text_color
+  | attr_background
+  | attr_border
+  | attr_shadow
+  | attr_padding
+  | attr_spacing
+  | attr_selected
+  | attr_cell_size
+  | attr_label
+  | attr_clip
+  | attr_toggled
+  | attr_wrapping
+  | attr_shaping
+}
+
+attr_padding = { ^"padding" ~ ":" ~ (full | edge | uniform | padding_option_list) }
+
+attr_width      = { ^"width" ~ ":" ~ (length | pixels) }
+attr_height     = { ^"height" ~ ":" ~ (length | pixels) }
+attr_max_width  = { ^"max-width" ~ ":" ~ pixels }
+attr_max_height = { ^"max-height" ~ ":" ~ pixels }
+attr_size       = { ^"size" ~ ":" ~ pixels }
+attr_cell_size  = { ^"cell-size" ~ ":" ~ pixels }
+attr_spacing    = { ^"spacing" ~ ":" ~ pixels }
+attr_align_x    = { ^"align-x" ~ ":" ~ horizontal }
+attr_align_y    = { ^"align-y" ~ ":" ~ vertical }
+attr_align      = { ^"align" ~ ":" ~ (horizontal | vertical) }
+attr_text_color = { (^"text-color" | ^"text-colour") ~ ":" ~ (color_hex | option_color) }
+attr_background = { (^"background" | ^"bg") ~ ":" ~ (option_gradient | option_color) }
+attr_selected   = { (^"selected") ~ ":" ~ string }
+attr_label      = { (^"label") ~ ":" ~ string }
+attr_clip       = { (^"clip") ~ ":" ~ boolean }
+attr_toggled    = { (^"toggled") ~ ":" ~ boolean }
+attr_wrapping   = { (^"wrapping") ~ ":" ~ (glyph | word | none | either) }
+attr_shaping    = { (^"shaping") ~ ":" ~ (basic | advanced) }
+
+attr_border = { (^"border") ~ ":" ~ border_option_list }
+attr_shadow = { (^"shadow") ~ ":" ~ shadow_option_list }
+
+padding_option_list = _{ padding_option ~ ("," ~ padding_option)* }
+padding_option      = _{ option_top | option_bottom | option_left | option_right }
+
+border_option_list = _{ border_option ~ ("," ~ border_option)* }
+border_option      = _{ option_color | option_width | option_radius }
+
+shadow_option_list = _{ shadow_option ~ ("," ~ shadow_option)* }
+shadow_option      = _{ option_top | option_bottom | option_left | option_right }
+
+option_color    = { (^"color" | ^"colour") ~ "(" ~ color ~ ")" }
+option_gradient = { (^"gradient") ~ "(" ~ gradient ~ ")" }
+option_width    = { (^"width" | ^"w") ~ "(" ~ float ~ ")" }
+option_radius   = { (^"radius") ~ "(" ~ (full | uniform) ~ ")" }
+option_top      = { top ~ "(" ~ float ~ ")" }
+option_bottom   = { bottom ~ "(" ~ float ~ ")" }
+option_left     = { left ~ "(" ~ float ~ ")" }
+option_right    = { right ~ "(" ~ float ~ ")" }
+
+// uniform padding
+uniform = { float }
+edge    = { ((float ~ ",") ~ float) }
+full    = { ((float ~ ","){3} ~ float) }
+
+// Length
+length       = { fill_portion | fixed | fill | shrink }
+fill_portion = { ^"fill-portion" ~ "(" ~ integer ~ ")" }
+fixed        = { ^"fixed" ~ "(" ~ float ~ ")" }
+fill         = { ^"fill" }
+shrink       = { ^"shrink" }
+
+// Pixels
+pixels = { float }
+
+// Horizontal Alignment
+horizontal = { left | center | right }
+
+// Vertical Alignment
+vertical = { top | center | bottom }
+
+// alignment = { top | bottom | left | right | center }
+
+left   = { ^"left" | ^"l" }
+right  = { ^"right" | ^"r" }
+top    = { ^"top" | ^"t" }
+bottom = { ^"bottom" | ^"b" }
+center = { ^"center" | ^"centre" | ^"c" }
+
+color_hex_rrggbbaa = _{ ASCII_HEX_DIGIT{8} }
+color_hex_rrggbb   = _{ ASCII_HEX_DIGIT{6} }
+color_hex_rgba     = _{ ASCII_HEX_DIGIT{4} }
+color_hex_rgb      = _{ ASCII_HEX_DIGIT{3} }
+color_hex          =  { "#" ~ (color_hex_rrggbbaa | color_hex_rrggbb | color_hex_rgba | color_hex_rgb) }
+
+// Colors are parsed as strings, and passed to ColorParser
+color = @{ proxy }
+// Gradients are parsed as strings, and passed to GradientParser
+gradient = @{ proxy }
+
+proxy = @{ (!("(" | ")") ~ ANY)* }
+
+// attribute      = { SOI ~ (attributes) ~ EOI }
+attribute_list = { SOI ~ (attributes ~ ("," ~ attributes)*) ~ EOI }

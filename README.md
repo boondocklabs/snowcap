@@ -34,8 +34,8 @@ The grammar is specified in [snowcap.pest](src/snowcap.pest) and  an example lay
 For example, creating a container with a column would look like
 
 ```
-{<width:"fill", align-x:"center">
-	|<align:"center">[
+{<width:fill, align-x:center>
+	|<align:center>[
 		text<size:19>("Hello"),
 		text<size:24>("Snowcap")
 	]

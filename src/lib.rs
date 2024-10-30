@@ -2,33 +2,60 @@ mod attribute;
 mod connector;
 mod conversion;
 mod data;
+mod dynamic_widget;
 mod error;
+mod event;
 mod message;
 mod node;
 mod parser;
+mod tree_util;
+mod util;
+mod widget;
 
+use arbutus::TreeDiff;
+use arbutus::TreeNode as _;
+use arbutus::TreeNodeRef as _;
 use connector::{Endpoint, Inlet};
-use data::provider::Provider;
-use data::DataType;
-use data::FileData;
-use data::MarkdownItems;
+use data::provider::ProviderEvent;
+use dynamic_widget::DynamicWidget;
+
+#[cfg(not(target_arch = "wasm32"))]
+use event::fsnotify::FsNotifyEventHandler;
+#[cfg(not(target_arch = "wasm32"))]
+use event::fsnotify::FsNotifyState;
+
+use event::provider::ProviderEventHandler;
+use event::provider::ProviderState;
+use event::DynamicHandler;
+use event::EventHandler;
+
+// Re-export iced
 pub use iced;
 use iced::advanced::graphics::futures::MaybeSend;
-use message::Event;
-use node::NodeManager;
-use parking_lot::Mutex;
-use parser::TreeNode;
-use tracing::warn;
+use iced::futures;
+use iced::futures::SinkExt;
+use iced::Task;
 
+use message::Command;
+use message::Event;
+use message::EventKind;
+use message::MessageDiscriminants;
+use message::WidgetMessage;
+use node::Content;
+use node::SnowcapNode;
+use parking_lot::Mutex;
+use parser::value::ValueKind;
+use tracing::warn;
+use tree_util::WidgetCache;
+use xxhash_rust::xxh64::Xxh64;
+
+use std::any::Any;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use conversion::theme::SnowcapTheme;
 pub use error::*;
-use iced::futures;
-use iced::futures::SinkExt;
-use iced::Task;
 pub use message::Message;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -38,7 +65,6 @@ use notify::RecommendedWatcher;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::Watcher;
 
-pub use parser::MarkupTree;
 pub use parser::SnowcapParser;
 pub use parser::Value;
 
@@ -46,89 +72,45 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 
-#[derive(Debug)]
-pub struct Snowcap<AppMessage> {
+/*
+type Node<Data, Id> = arbutus::node::refcell::Node<Data, Id>;
+type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
+*/
+
+type Node<Data, Id> = arbutus::node::simple::Node<Data, Id>;
+type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
+
+type Tree<M> = arbutus::Tree<NodeRef<M>>;
+type IndexedTree<M> = arbutus::IndexedTree<NodeRef<M>>;
+type NodeId = arbutus::NodeId;
+
+type SnowHasher = Xxh64;
+
+pub struct Snowcap<AppMessage>
+where
+    AppMessage: Clone + std::fmt::Debug + 'static,
+{
     #[cfg(not(target_arch = "wasm32"))]
     filename: Option<PathBuf>,
 
-    node_manager: NodeManager<AppMessage>,
-    tree: Option<TreeNode<AppMessage>>,
+    tree: Arc<Mutex<Option<IndexedTree<Message<AppMessage>>>>>,
 
     #[cfg(not(target_arch = "wasm32"))]
-    watcher: FsEventWatcher,
+    provider_watcher: FsEventWatcher,
 
-    //event_tx: UnboundedSender<Event>,
-    //event_rx: Option<UnboundedReceiver<Event>>,
     event_endpoint: Endpoint<Event>,
 
-    provider_map: HashMap<PathBuf, Arc<Mutex<dyn Provider + 'static>>>,
+    event_handler: HashMap<EventKind, DynamicHandler<'static, Message<AppMessage>>>,
+
+    #[cfg(not(target_arch = "wasm32"))]
+    notify_state: Arc<Mutex<FsNotifyState<Message<AppMessage>>>>,
+    provider_state: Arc<Mutex<ProviderState<Message<AppMessage>>>>,
 }
 
 impl<AppMessage> Snowcap<AppMessage>
 where
-    AppMessage: Clone + MaybeSend + std::fmt::Debug + 'static,
+    AppMessage: Clone + MaybeSend + std::fmt::Debug,
 {
-    pub fn watch_tree_files(&mut self) {
-        self.provider_map.clear();
-
-        info!("Walking tree and adding files to watcher");
-
-        for node in self.tree.as_ref().unwrap().clone() {
-            if let MarkupTree::Value(value) = node.inner() {
-                if let Value::Data {
-                    provider: Some(provider),
-                    ..
-                } = &*value.borrow()
-                {
-                    // Provide an event sender to this Provider
-                    provider
-                        .lock()
-                        .set_event_inlet(self.event_endpoint.get_inlet());
-
-                    /*
-                    // If this is a file provider, register the file with the watcher
-                    if let DataProvider::File(file_provider) = &**provider {
-                        let path = file_provider.path();
-                        info!("Found DataSource FileProvider for file {:?}", path);
-
-                        // Store an Arc of the FileProvider in the hashmap
-                        self.provider_map.insert(path.into(), (*provider).clone());
-
-                        // Add the path to the watcher
-                        self.watcher
-                            .watch(path, notify::RecursiveMode::NonRecursive)
-                            .unwrap();
-                    }
-                    */
-                }
-            }
-        }
-    }
-
-    pub fn get_provider_tasks(&self) -> Vec<Task<Message<AppMessage>>> {
-        let mut tasks: Vec<Task<Message<AppMessage>>> = Vec::new();
-
-        for node in self.tree.as_ref().unwrap().clone() {
-            if let MarkupTree::Value(value) = node.inner() {
-                if let Value::Data {
-                    provider: Some(provider),
-                    ..
-                } = &*value.borrow()
-                {
-                    tasks.push(
-                        provider
-                            .lock()
-                            .init_task(provider.clone(), node.id())
-                            .map(|e| Message::Event(e))
-                            .into(),
-                    );
-                }
-            }
-        }
-
-        tasks
-    }
-
     pub fn new() -> Result<Self, Error> {
         let event_endpoint = Endpoint::new();
 
@@ -136,23 +118,96 @@ where
 
         #[cfg(not(target_arch = "wasm32"))]
         // Initialize the filesystem watcher
-        //let watcher = Self::init_watcher(event_tx.clone());
-        let watcher = Self::init_watcher(event_endpoint.get_inlet());
+        let provider_watcher = Self::init_watcher(event_endpoint.get_inlet());
 
-        let snow = Self {
+        let tree = Arc::new(Mutex::new(None));
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let notify_state = Arc::new(Mutex::new(FsNotifyState::new(tree.clone())));
+        let provider_state = Arc::new(Mutex::new(ProviderState::new(tree.clone())));
+
+        let mut snow = Self {
+            tree,
+            event_endpoint,
+            event_handler: HashMap::new(),
+            provider_state,
+            #[cfg(not(target_arch = "wasm32"))]
+            notify_state,
             #[cfg(not(target_arch = "wasm32"))]
             filename: None,
-            node_manager: NodeManager::new(),
-            tree: None,
             #[cfg(not(target_arch = "wasm32"))]
-            watcher,
-            //event_tx,
-            //event_rx: Some(event_rx),
-            event_endpoint,
-            provider_map: HashMap::new(),
+            provider_watcher,
         };
 
+        let provider_handler = ProviderEventHandler::new(snow.tree.clone());
+
+        snow.event_handler.insert(
+            EventKind::Provider,
+            DynamicHandler::new::<ProviderEvent, Arc<Mutex<ProviderState<Message<AppMessage>>>>>(
+                EventKind::Provider,
+                provider_handler,
+            ),
+        );
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let fsevent_handler = FsNotifyEventHandler::new(snow.tree.clone());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        snow.event_handler.insert(
+            EventKind::FsNotify,
+            DynamicHandler::new::<notify::Event, Arc<Mutex<FsNotifyState<Message<AppMessage>>>>>(
+                EventKind::FsNotify,
+                fsevent_handler,
+            ),
+        );
+
         Ok(snow)
+    }
+
+    pub fn update_widgets(&self) {
+        let mut pending = Vec::new();
+
+        for node in self.tree.lock().as_ref().unwrap().root() {
+            let _: Result<(), ()> = node.with_data(|inner| {
+                if inner.widget.is_none() || inner.is_dirty() {
+                    pending.push(node.clone());
+                }
+                Ok(())
+            });
+        }
+
+        //info!("Pending Updates: {pending:?}");
+
+        for _node in pending.into_iter().rev() {
+            //DynamicWidget::from_node(node).unwrap();
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn watch_tree_files(&mut self) -> Result<(), Error> {
+        self.notify_state.lock().provider_map.clear();
+
+        info!("Walking tree and adding files to watcher");
+
+        for node in self.tree.lock().as_ref().unwrap().root() {
+            match &**node.node().data() {
+                Content::Value(value) => {
+                    if let ValueKind::Dynamic {
+                        provider: Some(provider),
+                        ..
+                    } = value.inner()
+                    {
+                        // Provide an event sender to this Provider
+                        provider
+                            .lock()
+                            .set_event_inlet(self.event_endpoint.get_inlet());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -182,63 +237,80 @@ where
     #[cfg(not(target_arch = "wasm32"))]
     pub fn load_file(&mut self, filename: String) -> Result<(), Error> {
         let filename = &PathBuf::from(&filename);
-        let tree = SnowcapParser::parse_file(&filename)?;
+        let tree = SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?;
+
+        let tree = IndexedTree::from_tree(tree);
 
         self.filename = Some(filename.clone());
 
         // Register the markup file with the watcher
-        self.watcher
+        self.provider_watcher
             .watch(filename, notify::RecursiveMode::NonRecursive)?;
 
-        // Build a NodeManager from the AST.
-        // This maps any explicitly defined NodeId's from the markup to TreeNode references
-        self.node_manager = NodeManager::from_tree(tree.clone())?;
+        //self.tree = Some(tree);
 
-        self.tree = Some(tree);
+        self.set_tree(tree)?;
 
         // Register any files referenced by the markup with the watcher
-        self.watch_tree_files();
+        self.watch_tree_files()?;
+
+        self.update_widgets();
 
         Ok(())
     }
 
     pub fn load_memory(&mut self, data: &str) -> Result<(), Error> {
-        let tree = SnowcapParser::parse_memory(data)?;
-        self.node_manager = NodeManager::from_tree(tree.clone())?;
+        let tree = SnowcapParser::<Message<AppMessage>>::parse_memory(data)?;
 
-        self.tree = Some(tree);
+        if let Some(current) = &mut *self.tree.lock() {
+            // We already have a tree loaded. Diff the trees
+            let mut diff = TreeDiff::new(current.root().clone(), tree.root().clone());
+            let patch = diff.diff();
+
+            info!("Patching existing tree {patch:#?}");
+            patch.patch_tree(current);
+
+            current.reindex();
+
+            return Ok(());
+        }
+
+        self.set_tree(IndexedTree::from_tree(tree))?;
+
         Ok(())
     }
 
-    pub fn from_memory(data: &str) -> Result<Self, Error> {
-        let mut snow = Snowcap::new()?;
-        snow.load_memory(data)?;
-        Ok(snow)
-    }
-
-    pub fn root(&self) -> TreeNode<AppMessage> {
-        self.tree.as_ref().unwrap().clone()
+    fn set_tree(&mut self, tree: IndexedTree<Message<AppMessage>>) -> Result<(), Error> {
+        *self.tree.lock() = Some(tree);
+        Ok(())
     }
 
     // Initial tasks to be executed in parallel by the iced Runtime
     pub fn init(&mut self) -> Task<Message<AppMessage>> {
         let mut tasks = Vec::new();
 
-        let mut provider_tasks = self.get_provider_tasks();
-
-        tasks.append(&mut provider_tasks);
-
         // Start the event listener task
         tasks.push(Task::run(self.event_endpoint.take_outlet(), |ep_message| {
-            //tracing::info_span!("forwarder").in_scope(|| {
             info!("Received event from inlet {}", ep_message.from());
             Message::<AppMessage>::Event(ep_message.into_inner())
-            //})
         }));
 
-        tasks.push(Task::perform(async { true }, |_event| {
-            Message::Event(Event::Debug("Sending...".to_string()))
-        }));
+        // Run the initial tree update, and get any tasks (Provider init tasks)
+        let tree_task = if let Some(tree) = &*self.tree.lock() {
+            profiling::scope!("build-widgets");
+            info!("{}", tree.root());
+            match WidgetCache::update_tree(tree) {
+                Ok(task) => task,
+                Err(e) => {
+                    error!("Failed to build widgets: {}", e);
+                    Task::none()
+                }
+            }
+        } else {
+            Task::none()
+        };
+
+        tasks.push(tree_task);
 
         info!("Starting init tasks");
 
@@ -247,221 +319,261 @@ where
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn reload_file(&mut self) -> Result<(), Error> {
+        use arbutus::{TreeDiff, TreeNode};
+        use colored::Colorize;
+
         let filename = self.filename.clone().ok_or(Error::MissingAttribute(
             "No snowcap grammar filename in self".to_string(),
         ))?;
-        let tree = SnowcapParser::parse_file(&filename)?;
-        self.node_manager = NodeManager::from_tree(tree.clone())?;
-        self.tree = Some(tree);
 
-        self.watch_tree_files();
+        // Parse the new file into an IndexedTree
+        let mut new_tree =
+            IndexedTree::from_tree(SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?);
+
+        let _listener = new_tree
+            .on_event(|event| {
+                println!("NEW TREE EVENT {event:?}");
+            })
+            .ok();
+
+        println!("{}", "Parsed New Tree".bright_magenta());
+        println!("{}", new_tree.root());
+
+        if let Some(tree) = &mut (*self.tree.lock()) {
+            // Register an event handler on the tree. It will automatically be deregistered when it goes out of scope.
+            // This handler listens for tree modification events, and marks the nodes as dirty in the snowcap node data,
+            // so the affected widgets will be rebuilt on the next update pass.
+            let _listener = tree
+                .on_event(|event| {
+                    println!("TREE EVENT {event:?}");
+                    match event {
+                        arbutus::TreeEvent::NodeRemoved { node } => {
+                            if let Some(parent) = node.clone().node_mut().parent_mut() {
+                                parent.node_mut().data_mut().set_state(node::State::Dirty)
+                            }
+                        }
+                        arbutus::TreeEvent::NodeReplaced { node } => node
+                            .clone()
+                            .node_mut()
+                            .data_mut()
+                            .set_state(node::State::New),
+                        arbutus::TreeEvent::SubtreeInserted { node } => {
+                            // Invalidate the whole subtree
+                            for mut n in node {
+                                n.node_mut().data_mut().set_state(node::State::New)
+                            }
+                        }
+                        arbutus::TreeEvent::ChildRemoved { parent, .. } => parent
+                            .clone()
+                            .node_mut()
+                            .data_mut()
+                            .set_state(node::State::Dirty),
+                        arbutus::TreeEvent::ChildrenRemoved { parent, .. } => parent
+                            .clone()
+                            .node_mut()
+                            .data_mut()
+                            .set_state(node::State::Dirty),
+                        arbutus::TreeEvent::ChildrenAdded { parent, children } => {
+                            for child in children {
+                                child
+                                    .clone()
+                                    .node_mut()
+                                    .data_mut()
+                                    .set_state(node::State::New)
+                            }
+                            parent
+                                .clone()
+                                .node_mut()
+                                .data_mut()
+                                .set_state(node::State::Dirty)
+                        }
+                        arbutus::TreeEvent::ChildReplaced { parent, index }
+                        | arbutus::TreeEvent::ChildInserted { parent, index } => {
+                            // Invalidate the child
+                            let mut parent = parent.clone();
+                            let mut node = parent.node_mut();
+                            let child = node.children_mut().unwrap().get_mut(*index).unwrap();
+
+                            child.node_mut().data_mut().set_state(node::State::New);
+                        }
+                    };
+                })
+                .unwrap();
+
+            let mut diff = TreeDiff::new(tree.root().clone(), new_tree.root().clone());
+            let patch = diff.diff();
+            patch.patch_tree(tree);
+
+            tree.reindex();
+        }
 
         Ok(())
     }
 
-    fn handle_event(&mut self, event: Event) -> Task<Message<AppMessage>> {
-        match event {
-            Event::Debug(msg) => {
-                info!("Received debug message {msg}");
-                Task::none()
-            }
-            #[cfg(not(target_arch = "wasm32"))]
-            Event::FsNotify(event) => match event.kind {
-                notify::EventKind::Modify(notify::event::ModifyKind::Data(_change)) => {
-                    let mut tasks: Vec<Task<Message<AppMessage>>> = Vec::new();
-                    for path in &event.paths {
-                        info!("File change notification for {path:?}");
+    fn handle_widget_message(
+        &mut self,
+        node_id: &NodeId,
+        message: &mut WidgetMessage,
+    ) -> Task<Message<AppMessage>> {
+        info!("Widget Message for NodeId: {node_id}");
 
-                        // Find the provider of this file path from the provider map
-                        if let Some(provider) = self.provider_map.get(path) {
-                            // Get the update task for this Provider
-                            let task = provider.lock().update_task().map(Message::Event);
-                            tasks.push(task);
-                        } else {
-                            // Since we didn't find the path in the map of nodes
-                            // which reference the changed file, we can assume
-                            // that this is the markup file itself that has changed.
-                            if let Err(e) = self.reload_file() {
-                                error!("{e:#?}");
-                            }
-
-                            // Kickoff the providers
-                            let mut provider_tasks = self.get_provider_tasks();
-                            tasks.append(&mut provider_tasks);
-                        }
-                    }
-                    Task::batch(tasks)
-                }
-                _ => Task::none(),
-            },
-            Event::FsNotifyError(e) => {
-                error!("FsNotifyError {e:#?}");
-                Task::none()
-            }
-            Event::Provider(provider_event) => {
-                match provider_event {
-                    data::provider::ProviderEvent::Updated => todo!(),
-                    data::provider::ProviderEvent::FileLoaded { node_id, data } => {
-                        info!("File Loaded. Node ID: {node_id} {data:?}");
-                        match self.node_manager.get_node(&node_id) {
-                            Ok(node) => {
-                                if let MarkupTree::Value(value) = node.inner() {
-                                    match data {
-                                        FileData::Svg(handle) => {
-                                            let mut val = value.borrow_mut();
-                                            match &mut *val {
-                                                Value::Data { data, .. } => {
-                                                    data.replace(Arc::new(DataType::Svg(handle)));
-                                                }
-                                                _ => panic!("Expecting Value::Data"),
-                                            }
-                                        }
-
-                                        FileData::Image(handle) => {
-                                            let mut val = value.borrow_mut();
-                                            match &mut *val {
-                                                Value::Data { data, .. } => {
-                                                    data.replace(Arc::new(DataType::Image(handle)));
-                                                }
-                                                _ => panic!("Expecting Value::Data"),
-                                            }
-                                        }
-                                        FileData::Text(text) => {
-                                            let mut val = value.borrow_mut();
-                                            match &mut *val {
-                                                Value::Data { data, .. } => {
-                                                    data.replace(Arc::new(DataType::Text(text)));
-                                                }
-                                                _ => panic!("Expecting Value::Data"),
-                                            }
-                                        }
-                                        FileData::Markdown(items) => {
-                                            let mut val = value.borrow_mut();
-                                            match &mut *val {
-                                                Value::Data { data, .. } => {
-                                                    data.replace(Arc::new(DataType::Markdown(
-                                                        MarkdownItems::new(items),
-                                                    )));
-                                                }
-                                                _ => panic!("Expecting Value::Data"),
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            Err(_) => todo!(),
-                        }
-                    }
-                    data::provider::ProviderEvent::UrlLoaded { node_id, url, data } => {
-                        info!("URL Loaded {url:?} {data:?}");
-                        match self.node_manager.get_node(&node_id) {
-                            Ok(node) => {
-                                if let MarkupTree::Value(value) = node.inner() {
-                                    match data {
-                                        data::FileData::Text(text) => {
-                                            match &mut *value.borrow_mut() {
-                                                Value::Data { data, .. } => {
-                                                    data.replace(Arc::new(DataType::Text(text)));
-                                                }
-                                                _ => panic!("Expecting Value::Data"),
-                                            }
-                                        }
-                                        FileData::Image(handle) => match &mut *value.borrow_mut() {
-                                            Value::Data { data, .. } => {
-                                                data.replace(Arc::new(DataType::Image(handle)));
-                                            }
-                                            _ => panic!("Expecting Value::Data"),
-                                        },
-                                        _ => error!("Tree FileData type not supported"),
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                error!("Node {node_id:?}: {e:?}");
-                            }
-                        }
-                    }
-                    data::provider::ProviderEvent::Error(_) => todo!(),
-                }
-
-                Task::none()
-            }
-            Event::Empty => todo!(),
-            #[cfg(not(target_arch = "wasm32"))]
-            Event::WatchFileRequest { filename, provider } => {
-                info!("{provider:?} register {filename:?} with watcher");
-
-                match self
-                    .watcher
-                    .watch(&filename, notify::RecursiveMode::NonRecursive)
-                {
-                    Ok(_) => {
-                        info!("Successfully added {filename:?} to watcher");
-
-                        // Add the Provider to the map
-                        self.provider_map.insert(filename.clone(), provider);
-                    }
-                    Err(e) => {
-                        error!("Failed to add {filename:?} to watcher: {e:#?}")
-                    }
-                }
-
-                Task::none()
-            }
+        if let Some(node) = self.tree.lock().as_mut().unwrap().get_node_mut(node_id) {
+            node.node_mut().data_mut().set_dirty(true);
         }
-    }
 
-    pub fn update(&mut self, message: &mut Message<AppMessage>) -> Task<Message<AppMessage>> {
         match message {
-            Message::App(app_message) => {
-                debug!("AppMessage {app_message:?}");
-                //f(&app_message)
-                Task::none()
-            }
-            Message::Markdown(url) => {
+            WidgetMessage::Markdown(url) => {
                 info!("Markdown URL click {url}");
                 Task::none()
             }
-            Message::Button(id) => {
+            WidgetMessage::Button(id) => {
                 info!("Button clicked node={id:?}");
                 Task::none()
             }
-            Message::Toggler { id, toggled } => {
+            WidgetMessage::Toggler { id, toggled } => {
                 info!("Toggler node={id:?} toggled={toggled}");
                 Task::none()
             }
-            Message::PickListSelected { id, selected } => {
+            WidgetMessage::PickListSelected { id, selected } => {
                 info!("Picklist selected node={id:?} selected={selected}");
-                Task::none()
-            }
-            Message::Event(event) => {
-                let event = std::mem::take(event);
-                self.handle_event(event)
-            }
-            Message::Empty => {
-                warn!("Update called on Empty Message");
                 Task::none()
             }
         }
     }
 
-    pub fn view(&self) -> iced::Element<Message<AppMessage>> {
+    fn handle_event(&mut self, event: Event) -> Task<Message<AppMessage>> {
+        let event_type: EventKind = (&event).into();
+        if let Some(handler) = self.event_handler.get(&event_type) {
+            debug!("Found handler {handler:#?}");
+            let (module_event, module_state): (Box<dyn Any>, Box<dyn Any>) = match event {
+                #[cfg(not(target_arch = "wasm32"))]
+                Event::FsNotify(event) => (Box::new(event), Box::new(self.notify_state.clone())),
+                Event::Provider(provider_event) => (
+                    Box::new(provider_event),
+                    Box::new(self.provider_state.clone()),
+                ),
+                _ => {
+                    error!("Dynamic event handler was found, but missing event Box inner extraction pattern for {:?}", event);
+                    panic!();
+                }
+            };
+
+            debug!("Entering event handler");
+            match handler.handle(module_event, module_state) {
+                Ok(task) => {
+                    debug!("Event handler returned");
+                    task
+                }
+                Err(e) => {
+                    error!("{e:?}");
+                    Task::none()
+                }
+            }
+        } else {
+            // Event wasn't handled by dynamic dispatch
+            match event {
+                #[cfg(not(target_arch = "wasm32"))]
+                Event::FsNotifyError(e) => {
+                    error!("FsNotifyError {e:#?}");
+                    Task::none()
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                Event::WatchFileRequest { filename, provider } => {
+                    info!("{provider:?} register {filename:?} with watcher");
+
+                    match self
+                        .provider_watcher
+                        .watch(&filename, notify::RecursiveMode::NonRecursive)
+                    {
+                        Ok(_) => {
+                            info!("Successfully added {filename:?} to watcher");
+
+                            // Add the Provider to the map
+                            self.notify_state
+                                .lock()
+                                .provider_map
+                                .insert(filename.clone(), provider);
+                        }
+                        Err(e) => {
+                            error!("Failed to add {filename:?} to watcher: {e:#?}")
+                        }
+                    }
+
+                    Task::none()
+                }
+
+                _ => Task::none(),
+            }
+        }
+    }
+
+    #[profiling::function]
+    pub fn update(&mut self, message: &mut Message<AppMessage>) -> Task<Message<AppMessage>> {
+        let _message_type: MessageDiscriminants = (&*message).into();
+
+        let task = {
+            profiling::scope!("message-dispatch");
+            let task = match message {
+                Message::App(app_message) => {
+                    debug!("AppMessage {app_message:?}");
+                    //f(&app_message)
+                    Task::none()
+                }
+                Message::Widget { node_id, message } => {
+                    self.handle_widget_message(node_id, message)
+                }
+                Message::Event(event) => {
+                    let event = std::mem::take(event);
+                    self.handle_event(event)
+                }
+                Message::Empty => {
+                    warn!("Update called on Empty Message");
+                    Task::none()
+                }
+
+                Message::Command(Command::Reload) => {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Err(e) = self.reload_file() {
+                        error!("{}", e);
+                    }
+                    Task::none()
+                }
+            };
+            task
+        };
+
+        let tree_task = if let Some(tree) = &*self.tree.lock() {
+            profiling::scope!("build-widgets");
+            info!("{}", tree.root());
+            match WidgetCache::update_tree(tree) {
+                Ok(task) => task,
+                Err(e) => {
+                    error!("Failed to build widgets: {}", e);
+                    Task::none()
+                }
+            }
+        } else {
+            Task::none()
+        };
+
+        tree_task.chain(task)
+    }
+
+    #[profiling::function]
+    pub fn view<'a>(&'a self) -> iced::Element<'a, Message<AppMessage>> {
         info!("View");
 
-        if let Some(root) = &self.tree {
-            let guard = root.element_read();
-            if let Some(_element) = &*guard {
-                //let w = element.as_widget();
-                //return iced::Element::new(*element.as_widget());
+        let root = if let Some(tree) = &*self.tree.lock() {
+            if let Some(widget) = &tree.root().node().data().widget {
+                widget.clone().into_element().unwrap()
+            } else {
+                iced::widget::Text::new("No root widget in tree").into()
             }
-        }
+        } else {
+            iced::widget::Text::new("No tree").into()
+        };
 
-        match self.tree.as_ref().unwrap().try_into() {
-            Ok(content) => content,
-            Err(e) => {
-                error!("{e:?}");
-                iced::widget::text(format!("{e:?}")).into()
-            }
-        }
+        profiling::finish_frame!();
+        root
     }
 }

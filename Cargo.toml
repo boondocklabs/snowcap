@@ -1,6 +1,6 @@
 [package]
 name = "snowcap"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 license = "MIT"
 description = "A simple markup language for iced"
@@ -9,7 +9,6 @@ repository = "https://github.com/boondocklabs/snowcap"
 readme = "README.md"
 
 [dependencies]
-file-format = { version = "0.25.0", features = ["reader-txt", "reader-xml"] }
 iced = { git = "https://github.com/boondocklabs/iced.git", branch = "qr-code-borrow", features = [
     "qr_code",
     "svg",
@@ -19,9 +18,10 @@ iced = { git = "https://github.com/boondocklabs/iced.git", branch = "qr-code-bor
     "markdown",
     "tokio",
 ] }
+file-format = { version = "0.25", features = ["reader-txt", "reader-xml"] }
 mime = "0.3.17"
 once_cell = "1.19.0"
-parking_lot = { version = "0.12.3", features = ["owning_ref"] }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 pest = "2.7.13"
 pest_derive = "2.7.13"
 reqwest = { version = "0.12.8", features = ["blocking"] }
@@ -31,6 +31,11 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 url = "2.5.2"
+xxhash-rust = { version = "0.8.12", features = ["xxh64"] }
+
+arbutus = { path = "../arbutus" }
+colored = "2.1.0"
+profiling = { version = "1.0" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 notify = "6.1.1"
@@ -39,4 +44,4 @@ tokio = { version = "1.40.0", features = ["fs"] }
 
 [dev-dependencies]
 approx = "0.5.1"
-tracing-test = "0.2.5"
+tracing-test = { version = "0.2.5", features = ["no-env-filter"] }

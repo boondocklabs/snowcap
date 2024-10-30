@@ -1,16 +1,14 @@
-mod alignment;
-mod column;
-mod container;
+pub(crate) mod alignment;
+pub(crate) mod column;
+pub(crate) mod container;
 mod data;
-mod element;
-mod row;
-mod stack;
-mod text;
+pub(crate) mod dynamic_widget;
+pub(crate) mod row;
+pub(crate) mod stack;
 pub(crate) mod theme;
-mod widget;
+pub(crate) mod widget;
 
-use crate::{attribute::Attribute, error::ConversionError, parser::Value};
-
+/*
 /// Implements `TryInto` to convert a reference to `Value` into a reference to `String`.
 ///
 /// # Type Parameters
@@ -37,11 +35,11 @@ use crate::{attribute::Attribute, error::ConversionError, parser::Value};
 /// let value = Value::Number(42.into());
 /// let result: Result<&String, ConversionError> = (&value).try_into();
 /// assert!(result.is_err());
-impl<'a> TryInto<&'a String> for &'a Value {
+impl<'a> TryInto<&'a String> for &'a ValueInner {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<&'a String, Self::Error> {
-        if let Value::String(s) = self {
+        if let ValueInner::String(s) = self {
             Ok(s)
         } else {
             Err(ConversionError::InvalidType(format!(
@@ -77,11 +75,11 @@ impl<'a> TryInto<&'a String> for &'a Value {
 /// let float_result: Result<f32, ConversionError> = (&value).try_into();
 /// assert!(float_result.is_err());
 /// ```
-impl TryInto<f32> for &Value {
+impl TryInto<f32> for &ValueInner {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<f32, Self::Error> {
-        if let Value::Number(num) = self {
+        if let ValueInner::Number(num) = self {
             Ok(*num as f32)
         } else {
             Err(ConversionError::InvalidType(format!(
@@ -91,11 +89,11 @@ impl TryInto<f32> for &Value {
     }
 }
 
-impl TryInto<u16> for &Value {
+impl TryInto<u16> for &ValueInner {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<u16, Self::Error> {
-        if let Value::Number(num) = self {
+        if let ValueInner::Number(num) = self {
             Ok(*num as u16)
         } else {
             Err(ConversionError::InvalidType(format!(
@@ -105,11 +103,11 @@ impl TryInto<u16> for &Value {
     }
 }
 
-impl TryInto<bool> for &Value {
+impl TryInto<bool> for &ValueInner {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<bool, Self::Error> {
-        if let Value::Boolean(b) = self {
+        if let ValueInner::Boolean(b) = self {
             Ok(*b)
         } else {
             Err(ConversionError::InvalidType(format!(
@@ -119,19 +117,19 @@ impl TryInto<bool> for &Value {
     }
 }
 
-impl TryInto<iced::Length> for &Value {
+impl TryInto<iced::Length> for &ValueInner {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<iced::Length, Self::Error> {
         match self {
-            Value::String(str) => match str.as_str() {
+            ValueInner::String(str) => match str.as_str() {
                 "fill" => Ok(iced::Length::Fill),
                 "shrink" => Ok(iced::Length::Shrink),
                 _ => Err(ConversionError::InvalidType(format!(
                     "Expecting fill or shrink"
                 ))),
             },
-            Value::Number(num) => Ok((*num as f32).into()),
+            ValueInner::Number(num) => Ok((*num as f32).into()),
             _ => Err(ConversionError::InvalidType(format!(
                 "Unsupported {self:?}"
             ))),
@@ -139,7 +137,7 @@ impl TryInto<iced::Length> for &Value {
     }
 }
 
-impl TryInto<iced::Padding> for &Value {
+impl TryInto<iced::Padding> for &ValueInner {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<iced::Padding, Self::Error> {
@@ -148,7 +146,7 @@ impl TryInto<iced::Padding> for &Value {
     }
 }
 
-impl TryInto<iced::Pixels> for &Value {
+impl TryInto<iced::Pixels> for &ValueInner {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<iced::Pixels, Self::Error> {
@@ -157,11 +155,11 @@ impl TryInto<iced::Pixels> for &Value {
     }
 }
 
-impl TryInto<String> for &Value {
+impl TryInto<String> for &ValueInner {
     type Error = ConversionError;
 
     fn try_into(self) -> Result<String, Self::Error> {
-        if let Value::String(s) = self {
+        if let ValueInner::String(s) = self {
             Ok(s.clone())
         } else {
             Err(ConversionError::InvalidType(
@@ -170,7 +168,9 @@ impl TryInto<String> for &Value {
         }
     }
 }
+*/
 
+/*
 impl TryInto<iced::Length> for &Attribute {
     type Error = ConversionError;
 
@@ -234,6 +234,7 @@ impl TryInto<u16> for Attribute {
         (&*self.value()).try_into()
     }
 }
+*/
 
 /*
 impl<'a> TryInto<&'a String> for &'a Attribute {

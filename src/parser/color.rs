@@ -150,6 +150,16 @@ mod tests {
 
     #[traced_test]
     #[test]
+    fn test_parse_hex_color_invalid() {
+        let result = ColorParser::parse_str("#fffff");
+        assert!(
+            result.is_err(),
+            "Expected error parsing invalid hex color string"
+        );
+    }
+
+    #[traced_test]
+    #[test]
     fn test_parse_hex_color_rrggbbaa() {
         let result = ColorParser::parse_str("#FF5733");
         assert!(result.is_ok(), "Expected successful parsing of HEX color.");
@@ -184,7 +194,7 @@ mod tests {
     #[traced_test]
     #[test]
     fn test_parse_rgb_color() {
-        let result = ColorParser::parse_str("color(1.0, 0.34, 0.2)");
+        let result = ColorParser::parse_str("1.0, 0.34, 0.2");
         assert!(result.is_ok(), "expected successful parsing of rgb color.");
 
         // assuming todo!() is implemented, match the expected result:
@@ -200,7 +210,7 @@ mod tests {
     #[traced_test]
     #[test]
     fn test_parse_rgb8_color() {
-        let result = ColorParser::parse_str("color(255, 127, 255)");
+        let result = ColorParser::parse_str("255, 127, 255");
         assert!(result.is_ok(), "expected successful parsing of rgb color.");
 
         // assuming todo!() is implemented, match the expected result:
@@ -212,7 +222,7 @@ mod tests {
     #[traced_test]
     #[test]
     fn test_parse_rgba8_color() {
-        let result = ColorParser::parse_str("color(255, 127, 255, 0.5)");
+        let result = ColorParser::parse_str("255, 127, 255, 0.5");
         assert!(result.is_ok(), "expected successful parsing of rgb color.");
 
         // assuming todo!() is implemented, match the expected result:
@@ -223,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_parse_rgba_color() {
-        let result = ColorParser::parse_str("color(1.0, 0.34, 0.2, 0.5)");
+        let result = ColorParser::parse_str("1.0, 0.34, 0.2, 0.5");
         assert!(result.is_ok(), "Expected successful parsing of RGBA color.");
 
         // Assuming todo!() is implemented, match the expected result:

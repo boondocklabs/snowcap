@@ -1,53 +1,48 @@
-use iced::{widget::Row, Element};
-
-use crate::{attribute::Attributes, error::ConversionError, parser::TreeNode, Message};
+use crate::{
+    attribute::{AttributeValue, Attributes},
+    dynamic_widget::DynamicWidget,
+    error::ConversionError,
+    message::WidgetMessage,
+    tree_util::WidgetContent,
+    NodeId,
+};
+use iced::widget::Row;
+use tracing::warn;
 
 pub struct SnowcapRow;
 
 impl SnowcapRow {
-    pub fn convert<'a, SnowcapMessage, AppMessage>(
-        attrs: &Attributes,
-        contents: &'a Vec<TreeNode<AppMessage>>,
-    ) -> Result<Element<'a, SnowcapMessage>, ConversionError>
+    pub fn convert<M>(
+        attrs: Attributes,
+        contents: WidgetContent<M>,
+    ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        SnowcapMessage: 'a + Clone + From<Message<AppMessage>>,
-        AppMessage: 'a + Clone + std::fmt::Debug,
+        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
-        let children: Result<Vec<Element<'a, SnowcapMessage>>, ConversionError> =
-            contents.into_iter().map(|item| item.try_into()).collect(); // Convert each item into Element
-
-        let mut row = Row::with_children(children?);
+        let mut row = Row::with_children(contents);
 
         for attr in attrs {
-            row = match attr.name().as_str() {
-                "spacing" => {
-                    let spacing: Result<iced::Pixels, ConversionError> =
-                        (&*attr.value()).try_into();
-                    row.spacing(spacing?)
+            row = match *attr {
+                AttributeValue::VerticalAlignment(vertical) => row.align_y(vertical),
+
+                // TODO: Clean this up. align:center creates a HorizontalAlignment::Center attribute
+                AttributeValue::HorizontalAlignment(_) => {
+                    row.align_y(iced::alignment::Vertical::Center)
                 }
-                "padding" => {
-                    let padding: Result<iced::Padding, ConversionError> =
-                        (&*attr.value()).try_into();
-                    row.padding(padding?)
+                AttributeValue::Padding(padding) => row.padding(padding),
+                AttributeValue::WidthLength(length) => row.width(length),
+                AttributeValue::HeightLength(length) => row.height(length),
+                AttributeValue::WidthPixels(pixels) => row.width(pixels),
+                AttributeValue::HeightPixels(pixels) => row.height(pixels),
+                AttributeValue::Spacing(pixels) => row.spacing(pixels),
+                AttributeValue::Clip(clip) => row.clip(clip),
+                _ => {
+                    warn!("Unsupported Row attribute {:#?}", attr);
+                    row
                 }
-                "width" => {
-                    let width: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
-                    row.width(width?)
-                }
-                "height" => {
-                    let height: Result<iced::Length, ConversionError> = (&*attr.value()).try_into();
-                    row.height(height?)
-                }
-                "align" => {
-                    let align: Result<iced::alignment::Vertical, ConversionError> =
-                        (&*attr.value()).try_into();
-                    row.align_y(align?)
-                }
-                "clip" => todo!(),
-                _ => return Err(ConversionError::UnsupportedAttribute(attr.name().clone())),
             };
         }
 
-        Ok(row.into())
+        Ok(DynamicWidget::default().with_widget(row))
     }
 }
