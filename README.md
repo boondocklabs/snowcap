@@ -2,8 +2,10 @@
 
 Early stage markup for [iced](https://iced.rs) using [pest](https://pest.rs)
 
-There is a simple viewer in bin/snowcap-viewer.rs with hot reloading.
-To run it, use `cargo run samples/test.iced` from the root of the project.
+> [!NOTE]  
+> Currently under heavy development, and will change frequently.
+
+There is a viewer application in the [snowcap-viewer](https://github.com/boondocklabs/snowcap-viewer) repository.
 
 Here's an example of how the `test.iced` file renders.
 
