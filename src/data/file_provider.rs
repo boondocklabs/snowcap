@@ -127,7 +127,7 @@ impl Provider for FileProvider {
         *self.inlet.lock() = Some(inlet);
     }
 
-    fn update_task(&self) -> iced::Task<Event> {
+    fn update_task(&mut self) -> iced::Task<Event> {
         info_span!("FileProvider").in_scope(|| {
             let node_id = self.node_id;
 

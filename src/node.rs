@@ -1,6 +1,5 @@
 use colored::Colorize;
 use std::string::ToString;
-use tracing::debug;
 
 use std::{
     hash::{Hash, Hasher},

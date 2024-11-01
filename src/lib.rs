@@ -6,6 +6,7 @@ mod dynamic_widget;
 mod error;
 mod event;
 mod message;
+mod module;
 mod node;
 mod parser;
 mod tree_util;
@@ -41,6 +42,9 @@ use message::Event;
 use message::EventKind;
 use message::MessageDiscriminants;
 use message::WidgetMessage;
+use module::manager::ModuleManager;
+use module::timing::TimingEvent;
+use module::ModuleHandle;
 use node::Content;
 use node::SnowcapNode;
 use parking_lot::Mutex;
@@ -77,8 +81,8 @@ type Node<Data, Id> = arbutus::node::refcell::Node<Data, Id>;
 type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
 */
 
-type Node<Data, Id> = arbutus::node::simple::Node<Data, Id>;
-type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
+type Node<Data, Id> = arbutus::node::arc::Node<Data, Id>;
+type NodeRef<M> = arbutus::noderef::arc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
 
 type Tree<M> = arbutus::Tree<NodeRef<M>>;
 type IndexedTree<M> = arbutus::IndexedTree<NodeRef<M>>;
@@ -105,6 +109,9 @@ where
     #[cfg(not(target_arch = "wasm32"))]
     notify_state: Arc<Mutex<FsNotifyState<Message<AppMessage>>>>,
     provider_state: Arc<Mutex<ProviderState<Message<AppMessage>>>>,
+
+    modules: ModuleManager,
+    timing_module: ModuleHandle<TimingEvent>,
 }
 
 impl<AppMessage> Snowcap<AppMessage>
@@ -126,6 +133,9 @@ where
         let notify_state = Arc::new(Mutex::new(FsNotifyState::new(tree.clone())));
         let provider_state = Arc::new(Mutex::new(ProviderState::new(tree.clone())));
 
+        let mut modules = ModuleManager::new();
+        let timing_module = modules.create::<module::timing::Timing>();
+
         let mut snow = Self {
             tree,
             event_endpoint,
@@ -137,6 +147,9 @@ where
             filename: None,
             #[cfg(not(target_arch = "wasm32"))]
             provider_watcher,
+
+            modules,
+            timing_module,
         };
 
         let provider_handler = ProviderEventHandler::new(snow.tree.clone());
@@ -311,6 +324,13 @@ where
         };
 
         tasks.push(tree_task);
+
+        let mut fooref = self.timing_module.module_mut().unwrap();
+        let task = fooref
+            .get_init_task(self.timing_module.clone(), 0)
+            .map(|event| Message::from(event));
+
+        tasks.push(task);
 
         info!("Starting init tasks");
 
@@ -513,17 +533,25 @@ where
 
         let task = {
             profiling::scope!("message-dispatch");
+
+            let message = std::mem::take(message);
+
             let task = match message {
+                Message::Module(module_message) => self
+                    .modules
+                    .handle_message(module_message)
+                    .map(|m| Message::from(m)),
                 Message::App(app_message) => {
                     debug!("AppMessage {app_message:?}");
                     //f(&app_message)
                     Task::none()
                 }
-                Message::Widget { node_id, message } => {
-                    self.handle_widget_message(node_id, message)
-                }
+                Message::Widget {
+                    node_id,
+                    mut message,
+                } => self.handle_widget_message(&node_id, &mut message),
                 Message::Event(event) => {
-                    let event = std::mem::take(event);
+                    //let event = std::mem::take(event);
                     self.handle_event(event)
                 }
                 Message::Empty => {

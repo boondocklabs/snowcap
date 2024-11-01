@@ -1,6 +1,6 @@
-use std::{cell::Ref, time::Instant};
+use std::time::Instant;
 
-use arbutus::{node::simple::Node, TreeNode, TreeNodeRef as _};
+use arbutus::{TreeNode, TreeNodeRef as _};
 use iced::{advanced::graphics::futures::MaybeSend, Element, Task};
 use tracing::{debug, debug_span, error};
 
@@ -204,15 +204,12 @@ impl WidgetCache {
 
     /// Collect cached [`DynamicWidget`] objects for all children of this node, if there are any.
     /// Returns None if no cached widgets are available.
-    fn child_widgets<M>(node: &Ref<'_, Node<SnowcapNode<M>>>) -> Option<Vec<DynamicWidget<M>>>
+    fn child_widgets<M>(node: &NodeRef<M>) -> Option<Vec<DynamicWidget<M>>>
     where
-        M: Clone
-            + std::fmt::Debug
-            + From<(NodeId, WidgetMessage)>
-            + From<Event>
-            + MaybeSend
-            + 'static,
+        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + From<Event> + 'static,
     {
+        let node = node.node();
+
         let child_widgets: Option<Vec<DynamicWidget<M>>> = node.children().and_then(|children| {
             let widgets: Vec<DynamicWidget<M>> = children
                 .iter()
@@ -226,17 +223,14 @@ impl WidgetCache {
 
     /// Get [`WidgetContent`] for a node from a Vec of [`DynamicWidget`] of the children
     fn widget_content<M>(
-        node: &Ref<'_, Node<SnowcapNode<M>>>,
+        node: &NodeRef<M>,
         child_widgets: Option<Vec<DynamicWidget<M>>>,
     ) -> WidgetContent<M>
     where
-        M: Clone
-            + std::fmt::Debug
-            + From<(NodeId, WidgetMessage)>
-            + From<Event>
-            + MaybeSend
-            + 'static,
+        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + From<Event> + 'static,
     {
+        let node = node.node();
+
         let content = if let Some(mut children) = child_widgets {
             if children.len() == 1 {
                 WidgetContent::Widget(children.pop().unwrap())
@@ -273,12 +267,7 @@ impl WidgetCache {
         content: WidgetContent<M>,
     ) -> Result<Option<DynamicWidget<M>>, ConversionError>
     where
-        M: Clone
-            + std::fmt::Debug
-            + From<(NodeId, WidgetMessage)>
-            + From<Event>
-            + MaybeSend
-            + 'static,
+        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + From<Event> + 'static,
     {
         let widget = match &**data {
             Content::Widget(widget) => {
@@ -342,7 +331,6 @@ impl WidgetCache {
             + 'static,
     {
         let start = Instant::now();
-        let mut tasks: Vec<Task<M>> = Vec::new();
 
         debug_span!("tree-update").in_scope(|| {
             // First pass - Find dirty paths, mark nodes along the paths as dirty, and drop cached widgets
@@ -360,10 +348,10 @@ impl WidgetCache {
                 }
 
                 // Get a Vec of the children's DynamicWidgets
-                let child_widgets = Self::child_widgets(&node);
+                let child_widgets = Self::child_widgets(&noderef);
 
                 // Get the WidgetContent for this node
-                let content = Self::widget_content(&node, child_widgets);
+                let content = Self::widget_content(&noderef, child_widgets);
 
                 let widget = Self::build_widget(node_id, attrs, data, content)?;
 
@@ -379,51 +367,10 @@ impl WidgetCache {
                 noderef.try_node_mut()?.data_mut().set_state(State::Clean);
             }
 
-            Ok(Task::batch(tasks))
-
-            /*
-            // Second pass - Rebuild dropped widgets
-            tree.leaf_iter().for_each(|noderef| {
-                let node = noderef.try_node()?;
-                let data = node.data();
-                let node_id = node.id();
-                let attrs = data.attrs.clone().unwrap_or(Attributes::default());
-
-                if data.widget.is_some() {
-                    // Already have a widget for this node, continue down the tree
-                    return Ok(());
-                }
-
-                // Get a Vec of the children's DynamicWidgets
-                let child_widgets = Self::child_widgets(&node);
-
-                // Get the WidgetContent for this node
-                let content = Self::widget_content(&node, child_widgets);
-
-
-                // Drop node so we can borrow as mutable
-                drop(node);
-
-                if let Some(widget) = widget {
-                    noderef.try_node_mut()?.data_mut().widget.replace(widget);
-                }
-
-                if let Some(task) = task {
-                    tasks.push(task);
-                }
-
-                // Mark the node as clean
-                noderef.try_node_mut()?.data_mut().set_state(State::Clean);
-
-                Ok::<(), ConversionError>(())
-            })?;
-
             let duration = Instant::now() - start;
             debug!("Finished updating tree. Took {duration:?}");
 
-            // Return a batch of any tasks collected while processing the tree
             Ok(Task::batch(tasks))
-            */
         })
     }
 }

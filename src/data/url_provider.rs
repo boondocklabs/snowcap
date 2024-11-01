@@ -7,7 +7,7 @@ use super::{
 use crate::{connector::Inlet, message::Event, parser::error::ParseError};
 use arbutus::NodeId;
 use colored::Colorize;
-use iced::Task;
+use iced::{task::Handle, Task};
 use parking_lot::Mutex;
 use reqwest::header::CONTENT_TYPE;
 use tracing::{debug, info, warn};
@@ -18,11 +18,17 @@ pub struct UrlProvider {
     url: Url,
     node_id: Option<NodeId>,
     inlet: Mutex<Option<Inlet<Event>>>,
+
+    task_handles: Vec<Handle>,
 }
 
 impl Drop for UrlProvider {
     fn drop(&mut self) {
-        println!("{}", "URL PROVIDER DROPPED".bright_magenta());
+        println!("{} {}", "Provider dropped".bright_magenta(), self);
+        for handle in &self.task_handles {
+            println!("Aborting task");
+            handle.abort();
+        }
     }
 }
 
@@ -42,6 +48,7 @@ impl UrlProvider {
             url,
             node_id: None,
             inlet: Mutex::new(None),
+            task_handles: Vec::new(),
         })
     }
 }
@@ -53,10 +60,11 @@ impl Provider for UrlProvider {
         *self.inlet.lock() = Some(inlet)
     }
 
-    fn update_task(&self) -> iced::Task<Event> {
+    fn update_task(&mut self) -> iced::Task<Event> {
         let url = self.url.clone();
         let node_id = self.node_id.unwrap().clone();
-        Task::perform(
+
+        let task = Task::perform(
             async move {
                 loop {
                     match reqwest::get(url.clone()).await {
@@ -96,15 +104,28 @@ impl Provider for UrlProvider {
                 }
             },
             |(node_id, url, data)| Event::Provider(ProviderEvent::UrlLoaded { node_id, url, data }),
-        )
+        );
+
+        let (task, handle) = task.abortable();
+
+        self.task_handles.push(handle);
+
+        task
     }
 
     fn init_task(&mut self, _this: Arc<Mutex<DynProvider>>, node_id: NodeId) -> Task<Event> {
         self.node_id = Some(node_id);
 
         Task::perform(
-            async move { tracing::info!("UrlProvider Init Task") },
-            |_| Event::Provider(ProviderEvent::Initialized),
+            async move {
+                tracing::info!("UrlProvider Init Task");
+
+                reqwest::Client::builder().build()
+            },
+            |result| match result {
+                Ok(client) => Event::Provider(ProviderEvent::Initialized),
+                Err(e) => Event::Provider(ProviderEvent::Error(e.to_string())),
+            },
         )
         .chain(self.update_task())
     }

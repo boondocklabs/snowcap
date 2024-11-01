@@ -2,14 +2,19 @@ use std::cell::{BorrowError, BorrowMutError};
 use std::string::FromUtf8Error;
 
 use thiserror::Error;
+use tokio::sync::TryLockError;
 
 use crate::attribute::Attribute;
+use crate::module::error::ModuleError;
 use crate::parser::error::ParseErrorContext;
 
 #[derive(Error, Debug)]
 pub enum SyncError {
     #[error("Deadlock {0}")]
     Deadlock(String),
+
+    #[error(transparent)]
+    TryLock(#[from] TryLockError),
 }
 
 #[derive(Error, Debug)]
@@ -87,4 +92,7 @@ pub enum Error {
 
     #[error(transparent)]
     Sync(#[from] SyncError),
+
+    #[error(transparent)]
+    Module(#[from] ModuleError),
 }

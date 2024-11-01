@@ -19,7 +19,7 @@ pub trait Provider: std::fmt::Debug + std::fmt::Display + MaybeSend + MaybeSync 
     fn init_task(&mut self, this: Arc<Mutex<DynProvider>>, node_id: NodeId) -> Task<Event>;
     fn set_node_id(&mut self, node_id: NodeId);
     fn set_event_inlet(&self, inlet: Inlet<Event>);
-    fn update_task(&self) -> Task<Event>;
+    fn update_task(&mut self) -> Task<Event>;
     fn hash_source(&self, hasher: &mut dyn std::hash::Hasher);
 }
 

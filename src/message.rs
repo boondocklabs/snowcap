@@ -6,6 +6,7 @@ use strum::{EnumDiscriminants, EnumIter};
 
 use crate::{
     data::provider::{DynProvider, ProviderEvent},
+    module::message::ModuleMessage,
     parser::ElementId,
     NodeId,
 };
@@ -32,6 +33,8 @@ pub enum Message<AppMessage> {
     },
 
     Event(Event),
+
+    Module(ModuleMessage),
 
     Command(Command),
 }

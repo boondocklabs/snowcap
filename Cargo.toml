@@ -36,6 +36,8 @@ xxhash-rust = { version = "0.8.12", features = ["xxh64"] }
 arbutus = { path = "../arbutus" }
 colored = "2.1.0"
 profiling = { version = "1.0" }
+async-trait = "0.1.83"
+tokio-stream = "0.1.16"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 notify = "6.1.1"
