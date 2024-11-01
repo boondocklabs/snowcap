@@ -16,7 +16,6 @@ stack  = { ("stack" | "^") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
 element_list = _{ "[" ~ (widget | row | column | stack | container) ~ ("," ~ (widget | row | column | stack | container))* ~ "]" }
 
 widget = { label ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ "(" ~ (element_value | widget | container | row | column | stack | array)? ~ ")" }
-pair   = { label ~ ":" ~ value }
 // attributes = { attribute ~ ("," ~ attribute)* }
 
 // Consume everything inside <, > to pass to AttributeParser

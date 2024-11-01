@@ -42,9 +42,9 @@ use message::Event;
 use message::EventKind;
 use message::MessageDiscriminants;
 use message::WidgetMessage;
+use module::handle::ModuleHandle;
 use module::manager::ModuleManager;
 use module::timing::TimingEvent;
-use module::ModuleHandle;
 use node::Content;
 use node::SnowcapNode;
 use parking_lot::Mutex;
@@ -325,9 +325,9 @@ where
 
         tasks.push(tree_task);
 
-        let mut fooref = self.timing_module.module_mut().unwrap();
+        let mut fooref = self.timing_module.try_module_mut().unwrap();
         let task = fooref
-            .get_init_task(self.timing_module.clone(), 0)
+            .start(self.timing_module.clone(), 0)
             .map(|event| Message::from(event));
 
         tasks.push(task);
