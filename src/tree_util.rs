@@ -312,6 +312,7 @@ impl WidgetCache {
                     panic!("No widget in root");
                 }
             }
+            Content::Module(_module) => todo!(),
             Content::Value(_value) => None,
             Content::None => None,
         };

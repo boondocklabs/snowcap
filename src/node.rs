@@ -10,6 +10,7 @@ use strum::{EnumDiscriminants, EnumIter};
 use xxhash_rust::xxh64::Xxh64;
 
 use crate::dynamic_widget::DynamicWidget;
+use crate::parser::module::Module;
 use crate::{attribute::Attributes, Value};
 
 #[derive(Debug, Hash, Clone, EnumDiscriminants, strum::Display)]
@@ -26,6 +27,8 @@ pub enum Content {
     Stack,
     #[strum(to_string = "Value: {0}")]
     Value(Value),
+    #[strum(to_string = "Module {0}")]
+    Module(Module),
 }
 
 impl Content {

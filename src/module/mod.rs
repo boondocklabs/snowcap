@@ -4,10 +4,11 @@ pub mod event;
 pub mod handle;
 pub mod manager;
 pub mod message;
+pub mod registry;
 pub mod test;
 
+pub mod http;
 pub mod timing;
-pub mod url;
 
 use async_trait::async_trait;
 use event::ModuleEvent;

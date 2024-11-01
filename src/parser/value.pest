@@ -1,0 +1,20 @@
+string = ${ "\"" ~ inner ~ "\"" }
+inner  = @{ char* }
+char   =  {
+    !("\"" | "\\") ~ ANY
+  | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+float = @{
+    "-"? ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*) ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)?
+}
+
+integer = { ASCII_DIGIT+ }
+
+boolean = { true | false }
+true    = { ^"true" }
+false   = { ^"false" }
+
+none = { ^"none" | ^"null" }
+
+value = { SOI ~ (string | float | integer | boolean | none) ~ EOI }

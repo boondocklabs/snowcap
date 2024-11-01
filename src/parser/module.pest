@@ -1,0 +1,33 @@
+WHITESPACE        = _{ " " | "\t" | "\r" | "\n" }
+COMMENT           = _{ SingleLineComment }
+SingleLineComment =  { "//" ~ (!"\n" ~ ANY)* }
+
+string = ${ "\"" ~ inner ~ "\"" }
+inner  = @{ char* }
+char   =  {
+    !("\"" | "\\") ~ ANY
+  | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+float = @{
+    "-"? ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)? ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)?
+}
+
+integer = @{ ASCII_DIGIT* }
+
+boolean = { true | false }
+true    = { ^"true" }
+false   = { ^"false" }
+
+value    = { (string | float | boolean | true | false | integer) }
+argument = { argument_name ~ ":" ~ value }
+
+// Consume everything inside {, } to pass to ModuleParser
+module_arguments = { argument ~ ("," ~ argument)* }
+
+label = _{ (ASCII_ALPHA | "-")* }
+
+module_name   = { label }
+argument_name = { label }
+
+module = { SOI ~ module_name ~ "!" ~ "{" ~ module_arguments? ~ "}" ~ EOI }

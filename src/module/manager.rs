@@ -11,6 +11,7 @@ use super::{
     dispatch::ModuleDispatch,
     error::ModuleError,
     message::{ModuleMessage, ModuleMessageKind},
+    registry::ModuleKind,
     HandleId, Module, ModuleHandle, ModuleInit,
 };
 
@@ -40,7 +41,8 @@ impl ModuleManager {
     }
 
     /// Create a new [`Module`] and register it with the dynamic event dispatcher
-    pub fn create<T: ModuleInit + Module>(&mut self) -> ModuleHandle<T::Event> {
+    pub fn create_inner<T: ModuleInit + Module>(&mut self) -> HandleId {
+        //ModuleHandle<T::Event> {
         // Get a new unique ID for this module
         let id = self
             .next_id
@@ -57,7 +59,8 @@ impl ModuleManager {
         // to this module using its unique HandleId
         self.dispatchers.insert(id, dispatcher);
 
-        handle
+        //handle
+        id
     }
 
     /// Dispatch an event to a module specified by HandleId. The event will be downcast back to
@@ -72,7 +75,7 @@ impl ModuleManager {
         } else {
             Task::done(ModuleMessage::from((
                 id,
-                crate::Error::from(ModuleError::ModuleNotFound {
+                crate::Error::from(ModuleError::HandleNotFound {
                     handle_id: id,
                     msg: "event dispatch",
                 }),
@@ -89,7 +92,7 @@ impl ModuleManager {
                 Task::none()
             }
             ModuleMessageKind::Debug(msg) => {
-                debug!("{}", msg);
+                debug!("Module Debug Message: {}", msg);
                 Task::none()
             }
 

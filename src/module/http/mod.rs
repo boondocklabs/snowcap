@@ -14,25 +14,21 @@ pub enum UrlEvent {
 impl ModuleEvent for UrlEvent {}
 
 #[derive(Default, Debug)]
-pub struct UrlModule {
+pub struct HttpModule {
     data: String,
 }
 
-impl UrlModule {
-    async fn init() {}
-}
-
-impl ModuleInit for UrlModule {}
+impl ModuleInit for HttpModule {}
 
 #[async_trait]
-impl ModuleAsync for UrlModule {
+impl ModuleAsync for HttpModule {
     type Event = UrlEvent;
     async fn init(&mut self, init_data: ModuleAsyncInitData) -> Self::Event {
-        UrlEvent::Init("Url Init".into())
+        UrlEvent::Init("HTTP Module Async Init".into())
     }
 }
 
-impl Module for UrlModule {
+impl Module for HttpModule {
     fn on_event(&mut self, event: Self::Event) -> Task<ModuleMessageKind> {
         println!("Received event from ourselves: {event:?}");
         match event {

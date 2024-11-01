@@ -12,6 +12,7 @@ use super::{event::ModuleEvent, DynModule, HandleId, Module};
 
 /// Raw module handle, wrapping a dyn Module in Arc and tokio RwLock.
 /// This is Send+Sync and can cross await boundaries.
+#[derive(Debug)]
 pub struct ModuleHandleRaw<E>
 where
     Self: MaybeSend + MaybeSync,
@@ -80,6 +81,7 @@ where
 /// using the instance methods [`ModuleHandle::module()`] or [`ModuleHandle::module_mut()`]
 ///
 /// To cross await boundaries, the handle can be converted to [`ModuleHandleRaw`] with [`ModuleHandle::into_raw()`]
+#[derive(Debug)]
 pub struct ModuleHandle<E>
 where
     E: ModuleEvent + MaybeSend + 'static,

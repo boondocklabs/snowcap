@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use iced::Task;
-use tokio::time::{Instant, Interval};
+use tokio::time::Instant;
 use tokio_stream::wrappers::IntervalStream;
 use tracing::debug;
 
@@ -20,15 +20,15 @@ pub enum TimingEvent {
 impl ModuleEvent for TimingEvent {}
 
 #[derive(Default, Debug)]
-pub struct Timing {
+pub struct TimingModule {
     stream: Option<IntervalStream>,
 }
-impl ModuleInit for Timing {}
+impl ModuleInit for TimingModule {}
 
 #[async_trait]
-impl ModuleAsync for Timing {
+impl ModuleAsync for TimingModule {
     type Event = TimingEvent;
-    async fn init(&mut self, init_data: ModuleAsyncInitData) -> Self::Event {
+    async fn init(&mut self, _init_data: ModuleAsyncInitData) -> Self::Event {
         debug!("Timing module init");
 
         let interval = tokio::time::interval(Duration::from_millis(1000));
@@ -38,7 +38,7 @@ impl ModuleAsync for Timing {
     }
 }
 
-impl Module for Timing {
+impl Module for TimingModule {
     fn init_tree(&mut self, tree: Option<&NodeRef<Self::Event>>) {
         debug!("Initialize tree in Timing module: {tree:#?}");
     }

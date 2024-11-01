@@ -1,22 +1,18 @@
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
 
 use arbutus::{NodeBuilder, TreeBuilder, TreeNodeRef};
 use attribute::AttributeParser;
+use module::ModuleParser;
 use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 use pest_derive::Parser;
-use tracing::{debug, debug_span, error};
-use value::ValueKind;
+use tracing::{debug, debug_span};
+use value::{ValueKind, ValueParser};
 
 use crate::attribute::Attributes;
-use crate::data::url_provider::UrlProvider;
-use crate::data::DataType;
 
-#[cfg(not(target_arch = "wasm32"))]
-use crate::data::FileProvider;
 use crate::message::{Event, WidgetMessage};
 use crate::node::{Content, SnowcapNode};
 use crate::{NodeId, Tree};
@@ -26,9 +22,13 @@ pub(crate) mod color;
 pub(crate) mod error;
 pub(crate) mod gradient;
 mod hash;
+pub(crate) mod module;
 pub(crate) mod value;
 
 pub use value::Value;
+
+#[cfg(test)]
+mod test;
 
 use error::{ParseError, ParseErrorContext};
 
@@ -140,69 +140,26 @@ where
         AttributeParser::parse_attributes(pair.as_str())
     }
 
-    fn parse_array(pair: Pair<Rule>) -> Result<Value, ParseError> {
+    /*
+    fn parse_array(&self, pair: Pair<Rule>) -> Result<Value, ParseError> {
         let context = ParserContext::from(&pair);
 
         let values: Result<Vec<Value>, ParseError> = pair
             .into_inner()
-            .map(|i| Self::parse_value(i.clone()).map(|v| v.with_context(ParserContext::from(&i))))
+            .map(|i| {
+                self.parse_value(i.clone())
+                    .map(|v| v.with_context(ParserContext::from(&i)))
+            })
             .collect();
 
         Ok(Value::new_array(values?).with_context(context))
     }
+    */
 
-    fn parse_value(pair: Pair<Rule>) -> Result<Value, ParseError> {
+    fn parse_value(&self, pair: Pair<Rule>) -> Result<Value, ParseError> {
         let context = ParserContext::from(&pair);
-
-        let res = {
-            debug!("value {:?} {}", pair.as_rule(), pair.as_str());
-            match pair.as_rule() {
-                Rule::number => {
-                    Ok(Value::new_float(pair.as_str().parse().unwrap()).with_context(context))
-                }
-                Rule::string => {
-                    Ok(Value::new_string(pair.into_inner().as_str().into()).with_context(context))
-                }
-                Rule::boolean => {
-                    Ok(Value::new_bool(pair.as_str().parse().unwrap()).with_context(context))
-                }
-                Rule::data_source => {
-                    let mut inner = pair.into_inner();
-                    let name = inner.next().unwrap().as_str().to_string();
-                    let value = inner
-                        .next()
-                        .expect("Expected data source value")
-                        .into_inner()
-                        .as_str()
-                        .to_string();
-
-                    match name.as_str() {
-                        "qr" => {
-                            let data = iced::widget::qr_code::Data::new(value)?;
-                            let data = DataType::QrCode(Arc::new(data));
-                            Ok(Value::new_data(data).with_context(context))
-                        }
-                        "url" => {
-                            let provider = UrlProvider::new(value.as_str())?;
-                            Ok(Value::new_provider(provider).with_context(context))
-                        }
-                        #[cfg(not(target_arch = "wasm32"))]
-                        "file" => {
-                            let path = &PathBuf::from(value.clone());
-                            let provider = FileProvider::new(path)?;
-                            Ok(Value::new_provider(provider).with_context(context))
-                        }
-                        _ => return Err(ParseError::Unhandled("Missing data or provider".into())),
-                    }
-                }
-                _ => Err(ParseError::Unhandled(format!(
-                    "AttributeValue {:?}",
-                    pair.as_rule()
-                ))),
-            }
-        };
-
-        res.map_err(|e| e)
+        debug!("value {:?} {}", pair.as_rule(), pair.as_str());
+        ValueParser::parse_str(pair.as_str(), &context)
     }
 
     fn parse_container<'b>(
@@ -240,7 +197,17 @@ where
                     attrs = Some(Self::parse_attributes(pair)?);
                     debug!("Container attributes {attrs:?}");
                 }
-                _ => return Err(ParseError::UnsupportedRule(format!("{:?}", pair.as_rule()))),
+                Rule::module => {
+                    self.parse_module(pair, builder)?;
+                }
+                _ => {
+                    return Err(ParseError::UnsupportedRule(format!(
+                        "{}: {} {:?}",
+                        file!(),
+                        line!(),
+                        pair.as_rule()
+                    )))
+                }
             };
         }
         Ok(())
@@ -376,31 +343,56 @@ where
                             })
                             .ok();
                     }
-                    Rule::element_value => {
-                        let value = Self::parse_value(pair.into_inner().next().unwrap())?;
+                    Rule::value => {
+                        let value = self.parse_value(pair.into_inner().next().unwrap())?;
                         let node = SnowcapNode::new(Content::Value(value));
 
                         widget.child(node, |_| Ok(()))?;
                     }
+                    /*
                     Rule::array => {
-                        let value = Self::parse_array(pair)?;
+                        let value = self.parse_array(pair)?;
                         let node = SnowcapNode::new(Content::Value(value));
 
                         widget.child(node, |_| Ok(()))?;
                     }
+                    */
                     Rule::widget => {
                         self.parse_pair(pair, widget)?;
                     }
                     Rule::container => {
                         self.parse_container(pair, widget)?;
                     }
+                    Rule::module => {
+                        self.parse_module(pair, widget)?;
+                    }
                     _ => {
-                        error!("Unhandled element rule {:?}", pair.as_rule())
+                        return Err(ParseError::UnsupportedRule(format!(
+                            "{}: {} {:?}",
+                            file!(),
+                            line!(),
+                            pair.as_rule()
+                        )))
                     }
                 }
             }
             Ok(())
         })?;
+
+        Ok(())
+    }
+
+    fn parse_module<'b>(
+        &mut self,
+        pair: Pair<Rule>,
+        builder: &mut SnowNodeBuilder<'b, M>,
+    ) -> Result<(), ParseError> {
+        // Parse the module
+        let module = ModuleParser::parse_str(pair.as_str(), self.context.clone())?;
+
+        // Add the module to the tree
+        let node = SnowcapNode::new(Content::Module(module));
+        builder.child(node, |_| Ok(()))?;
 
         Ok(())
     }
@@ -418,8 +410,16 @@ where
             Rule::column => self.parse_column(pair, builder),
             Rule::stack => self.parse_stack(pair, builder),
             Rule::widget => self.parse_widget(pair, builder),
+            Rule::module => self.parse_module(pair, builder),
             Rule::element_value => self.parse_pair(pair.into_inner().last().unwrap(), builder),
-            _ => panic!("Unhandled {pair:?}"),
+            _ => {
+                return Err(ParseError::UnsupportedRule(format!(
+                    "{}: {} {:?}",
+                    file!(),
+                    line!(),
+                    pair.as_rule()
+                )))
+            }
         }?;
 
         Ok(())
@@ -445,6 +445,3 @@ impl From<&Pair<'_, Rule>> for ParserContext {
 
 pub type ElementId = String;
 type ElementIdOption = Option<ElementId>;
-
-#[cfg(test)]
-mod tests {}

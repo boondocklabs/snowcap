@@ -44,6 +44,7 @@ use message::MessageDiscriminants;
 use message::WidgetMessage;
 use module::handle::ModuleHandle;
 use module::manager::ModuleManager;
+use module::registry::ModuleKind;
 use module::timing::TimingEvent;
 use node::Content;
 use node::SnowcapNode;
@@ -111,7 +112,6 @@ where
     provider_state: Arc<Mutex<ProviderState<Message<AppMessage>>>>,
 
     modules: ModuleManager,
-    timing_module: ModuleHandle<TimingEvent>,
 }
 
 impl<AppMessage> Snowcap<AppMessage>
@@ -134,7 +134,7 @@ where
         let provider_state = Arc::new(Mutex::new(ProviderState::new(tree.clone())));
 
         let mut modules = ModuleManager::new();
-        let timing_module = modules.create::<module::timing::Timing>();
+        let timing_module = modules.create(ModuleKind::Timing);
 
         let mut snow = Self {
             tree,
@@ -149,7 +149,6 @@ where
             provider_watcher,
 
             modules,
-            timing_module,
         };
 
         let provider_handler = ProviderEventHandler::new(snow.tree.clone());
@@ -325,12 +324,14 @@ where
 
         tasks.push(tree_task);
 
+        /*
         let mut fooref = self.timing_module.try_module_mut().unwrap();
         let task = fooref
             .start(self.timing_module.clone(), 0)
             .map(|event| Message::from(event));
 
         tasks.push(task);
+        */
 
         info!("Starting init tasks");
 

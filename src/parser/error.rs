@@ -91,6 +91,9 @@ pub enum ParseError {
     #[error("Unhandled {0}")]
     Unhandled(String),
 
+    #[error("Missing {0}")]
+    Missing(&'static str),
+
     #[error(transparent)]
     Color(#[from] pest::error::Error<super::color::Rule>),
 
@@ -99,6 +102,12 @@ pub enum ParseError {
 
     #[error(transparent)]
     Attribute(#[from] pest::error::Error<super::attribute::Rule>),
+
+    #[error(transparent)]
+    Module(#[from] pest::error::Error<super::module::Rule>),
+
+    #[error(transparent)]
+    Value(#[from] pest::error::Error<super::value::Rule>),
 
     #[error("Invalid Color {0}")]
     InvalidColor(String),

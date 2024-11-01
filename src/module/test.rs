@@ -9,7 +9,6 @@ use super::{
 #[derive(Debug)]
 pub enum FooEvent {
     Init(String),
-    Loaded(String),
 }
 impl ModuleEvent for FooEvent {}
 
@@ -22,7 +21,7 @@ impl ModuleInit for Foo {}
 #[async_trait]
 impl ModuleAsync for Foo {
     type Event = FooEvent;
-    async fn init(&mut self, init_data: ModuleAsyncInitData) -> Self::Event {
+    async fn init(&mut self, _init_data: ModuleAsyncInitData) -> Self::Event {
         debug!("Test module init");
         FooEvent::Init("Hello World".into())
     }
@@ -33,7 +32,6 @@ impl Module for Foo {
         println!("Received event from ourselves: {event:?}");
         match event {
             FooEvent::Init(data) => self.data = data,
-            FooEvent::Loaded(_) => todo!(),
         }
 
         Task::future(async move {

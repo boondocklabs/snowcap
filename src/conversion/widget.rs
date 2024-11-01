@@ -52,6 +52,7 @@ impl SnowcapWidget {
                                 Ok(SnowcapWidget::loading())
                             }
                         }
+                        ValueKind::None => todo!(),
                     }
                 } else {
                     Err(ConversionError::InvalidType(
@@ -79,6 +80,7 @@ impl SnowcapWidget {
                                 Ok(SnowcapWidget::loading())
                             }
                         }
+                        ValueKind::None => todo!(),
                     }
                 } else {
                     Err(ConversionError::InvalidType(

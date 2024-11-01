@@ -1,4 +1,4 @@
-use super::ParserContext;
+use super::{error::ParseError, ParserContext};
 use crate::{
     data::{
         provider::{DynProvider, Provider},
@@ -8,9 +8,12 @@ use crate::{
 };
 use iced::widget::text::IntoFragment;
 use parking_lot::Mutex;
+use pest::Parser as _;
+use pest_derive::Parser;
 use std::{borrow::Borrow, fmt::Write, ops::Deref, sync::Arc};
+use tracing::debug;
 
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct Value {
     context: Option<ParserContext>,
     inner: ValueKind,
@@ -127,8 +130,10 @@ impl std::fmt::Display for Value {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub enum ValueKind {
+    #[default]
+    None,
     String(String),
     Float(f64),
     Integer(u64),
@@ -166,6 +171,7 @@ impl std::fmt::Display for ValueKind {
                     write!(f, "Dynamic no provider")
                 }
             }
+            ValueKind::None => write!(f, "None"),
         }
     }
 }
@@ -213,6 +219,56 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &ValueKind {
                 None => format!("No Data Loaded").into(),
             },
             ValueKind::Array(_value) => todo!(),
+            ValueKind::None => format!("None").into(),
         }
+    }
+}
+
+#[derive(Parser)]
+#[grammar = "parser/value.pest"]
+pub struct ValueParser;
+
+impl ValueParser {
+    pub fn parse_str(data: &str, context: &ParserContext) -> Result<Value, ParseError> {
+        debug!("Parsing value {data}");
+
+        let pairs = Self::parse(Rule::value, data)?;
+
+        let mut value = Value::default();
+
+        if let Some(root) = pairs.into_iter().last() {
+            for pair in root.into_inner() {
+                value = match pair.as_rule() {
+                    Rule::string => Value::new_string(pair.as_str().into()),
+                    Rule::float => {
+                        Value::new_float(pair.as_str().parse().map_err(ParseError::Float)?)
+                    }
+                    Rule::integer => {
+                        Value::new_integer(pair.as_str().parse().map_err(ParseError::Integer)?)
+                    }
+                    Rule::boolean => {
+                        Value::new_bool(pair.as_str().parse().map_err(ParseError::Boolean)?)
+                    }
+                    Rule::none => Value::default(),
+
+                    // Return the module when the EOI rule is emitted
+                    Rule::EOI => return Ok(value.with_context(context.clone())),
+
+                    // Handle unsupported rules
+                    _ => {
+                        return Err(ParseError::UnsupportedRule(format!(
+                            "{}: {} {:?}",
+                            file!(),
+                            line!(),
+                            pair.as_rule()
+                        )));
+                    }
+                };
+            }
+        } else {
+            return Err(ParseError::Missing("root value pair"));
+        }
+
+        Err(ParseError::Missing("EOI not emitted"))
     }
 }

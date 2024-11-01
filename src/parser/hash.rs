@@ -43,6 +43,7 @@ impl std::hash::Hash for ValueKind {
                     provider.hash_source(state);
                 }
             }
+            ValueKind::None => {}
         }
     }
 }

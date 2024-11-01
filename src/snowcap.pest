@@ -6,28 +6,31 @@ COMMENT           = _{ SingleLineComment }
 SingleLineComment =  { "//" ~ (!"\n" ~ ANY)* }
 
 container = {
-    "{" ~ ("<" ~ attributes ~ ">")? ~ (row | column | stack | widget)? ~ "}"
+    "{" ~ ("<" ~ attributes ~ ">")? ~ (!container ~ element)? ~ "}"
 }
 
 row    = { ("row" | "-") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
 column = { ("col" | "|") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
 stack  = { ("stack" | "^") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
 
-element_list = _{ "[" ~ (widget | row | column | stack | container) ~ ("," ~ (widget | row | column | stack | container))* ~ "]" }
+element_list = _{ "[" ~ element ~ ("," ~ element)* ~ "]" }
 
-widget = { label ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ "(" ~ (element_value | widget | container | row | column | stack | array)? ~ ")" }
-// attributes = { attribute ~ ("," ~ attribute)* }
+widget = { label ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ "(" ~ (element_value | element)? ~ ")" }
+
+element = _{ (module | widget | row | column | stack | container) }
 
 // Consume everything inside <, > to pass to AttributeParser
 attributes = @{ (!("<" | ">") ~ ANY)* }
 
 id = { "#" ~ label }
 
-element_value =  { value }
-value         = _{ string | number | boolean | null | data_source }
-array         =  { "[" ~ value ~ ("," ~ value)* ~ "]" }
+element_value = _{ module | value }
+value         =  { string | number | boolean | null }
 
-data_source = { label ~ "!" ~ "(" ~ string ~ ")" }
+module = { label ~ "!" ~ "{" ~ module_arguments ~ "}" }
+
+// Consume everything inside {, } to pass to ModuleParser
+module_arguments = @{ (!("{" | "}") ~ ANY)* }
 
 boolean = { "true" | "false" }
 
