@@ -7,12 +7,13 @@ use std::{
 use iced::Task;
 use tracing::{debug, error};
 
+use crate::parser::module::{ModuleArgument, ModuleArguments};
+
 use super::{
     dispatch::ModuleDispatch,
     error::ModuleError,
-    message::{ModuleMessage, ModuleMessageKind},
-    registry::ModuleKind,
-    HandleId, Module, ModuleHandle, ModuleInit,
+    message::{Channel, ModuleMessage, ModuleMessageKind},
+    HandleId, Module, ModuleInit,
 };
 
 pub struct ModuleManager {
@@ -21,6 +22,9 @@ pub struct ModuleManager {
     // HashMap of HandleId to a ModuleDispatch instance
     // for dispatching event messages with type erasure
     dispatchers: HashMap<HandleId, ModuleDispatch>,
+
+    /// Channel subscriptions
+    subscriptions: HashMap<Channel, Vec<HandleId>>,
 }
 
 impl ModuleManager {
@@ -28,6 +32,7 @@ impl ModuleManager {
         Self {
             next_id: AtomicU64::new(0),
             dispatchers: HashMap::new(),
+            subscriptions: HashMap::new(),
         }
     }
 
@@ -66,9 +71,9 @@ impl ModuleManager {
     }
 
     /// Start the specified module
-    pub fn start(&mut self, id: HandleId) -> Task<ModuleMessage> {
+    pub fn start(&mut self, id: HandleId, args: &ModuleArguments) -> Task<ModuleMessage> {
         if let Some(dispatcher) = self.dispatchers.get_mut(&id) {
-            dispatcher.start(0)
+            dispatcher.start(0, args)
         } else {
             // Create a task that emits a ModuleError message in the iced runtime
 
@@ -122,6 +127,15 @@ impl ModuleManager {
         }
     }
 
+    pub fn subscribe(&mut self, channel: Channel, handle_id: HandleId) {
+        debug!("Module HandleId {} subscribed to {:?}", handle_id, channel);
+
+        self.subscriptions
+            .entry(channel)
+            .or_insert(Vec::new())
+            .push(handle_id);
+    }
+
     /// Handle a ModuleMessage. This is called from the iced update phase on receipt of a ModuleMessage.
     /// Dispatch the message to the module handle using the encapsulated HandleId.
     pub fn handle_message(&mut self, mut message: ModuleMessage) -> Task<ModuleMessage> {
@@ -142,7 +156,37 @@ impl ModuleManager {
             // Dispatch an event message to the module
             ModuleMessageKind::Event(event) => self.dispatch_event(message.handle_id(), event),
 
-            _ => self.dispatch_message(message.handle_id(), message),
+            ModuleMessageKind::Subscribe(channel) => {
+                self.subscribe(channel, message.handle_id());
+                Task::none()
+            }
+
+            ModuleMessageKind::Publish(msg) => {
+                if let Some(subs) = self.subscriptions.get(&msg.channel) {
+                    let mut tasks = Vec::new();
+                    for sub in subs {
+                        // Create a task which sends a publish message for this subscriber
+                        // and push to the vec of tasks to include in the batch
+                        //
+                        let m = ModuleMessage::new(*sub, ModuleMessageKind::Published(msg.clone()));
+
+                        tasks.push(Task::done(m));
+                    }
+                    Task::batch(tasks)
+                } else {
+                    Task::none()
+                }
+            }
+
+            ModuleMessageKind::Published(msg) => {
+                // Dispatch published messages to subscribers
+
+                // Need to reconstruct the message, as the match uses take_kind(), leaving
+                // a default None kind in its place
+                let m = ModuleMessage::new(message.handle_id(), ModuleMessageKind::Published(msg));
+
+                self.dispatch_message(message.handle_id(), m)
+            }
         }
     }
 }

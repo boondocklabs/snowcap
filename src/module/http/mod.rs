@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use iced::Task;
 
+use crate::parser::module::ModuleArguments;
+
 use super::{
     message::ModuleMessageKind, Module, ModuleAsync, ModuleAsyncInitData, ModuleEvent, ModuleInit,
 };
@@ -23,7 +25,7 @@ impl ModuleInit for HttpModule {}
 #[async_trait]
 impl ModuleAsync for HttpModule {
     type Event = UrlEvent;
-    async fn init(&mut self, init_data: ModuleAsyncInitData) -> Self::Event {
+    async fn init(&mut self, args: ModuleArguments, init_data: ModuleAsyncInitData) -> Self::Event {
         UrlEvent::Init("HTTP Module Async Init".into())
     }
 }

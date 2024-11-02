@@ -4,18 +4,20 @@ use async_trait::async_trait;
 use iced::Task;
 use tokio::time::Instant;
 use tokio_stream::wrappers::IntervalStream;
-use tracing::debug;
+use tracing::{debug, error};
 
-use crate::NodeRef;
+use crate::{parser::module::ModuleArguments, NodeRef};
 
 use super::{
-    message::ModuleMessageKind, Module, ModuleAsync, ModuleAsyncInitData, ModuleEvent, ModuleInit,
+    message::{Channel, ChannelData, ModuleMessageKind},
+    Module, ModuleAsync, ModuleAsyncInitData, ModuleEvent, ModuleInit,
 };
 
 #[derive(Debug)]
 pub enum TimingEvent {
     Init(IntervalStream),
     Tick(Instant),
+    Failed,
 }
 impl ModuleEvent for TimingEvent {}
 
@@ -28,13 +30,31 @@ impl ModuleInit for TimingModule {}
 #[async_trait]
 impl ModuleAsync for TimingModule {
     type Event = TimingEvent;
-    async fn init(&mut self, _init_data: ModuleAsyncInitData) -> Self::Event {
+    async fn init(
+        &mut self,
+        args: ModuleArguments,
+        _init_data: ModuleAsyncInitData,
+    ) -> Self::Event {
         debug!("Timing module init");
 
-        let interval = tokio::time::interval(Duration::from_millis(1000));
-        let stream = IntervalStream::new(interval);
+        debug!("Arguments: {}", args);
 
-        TimingEvent::Init(stream)
+        if let Some(interval) = args.get("interval") {
+            let interval: &String = interval.into();
+            match duration_str::parse(interval) {
+                Ok(duration) => {
+                    let interval = tokio::time::interval(duration);
+                    let stream = IntervalStream::new(interval);
+
+                    return TimingEvent::Init(stream);
+                }
+                Err(e) => {
+                    error!("Failed to convert interval argument");
+                }
+            }
+        }
+
+        TimingEvent::Failed
     }
 }
 
@@ -43,19 +63,27 @@ impl Module for TimingModule {
         debug!("Initialize tree in Timing module: {tree:#?}");
     }
     fn on_event(&mut self, event: Self::Event) -> Task<ModuleMessageKind> {
-        //println!("Received {event:?}");
         match event {
-            TimingEvent::Init(stream) => {
-                //self.stream = Some(data);
-
-                Task::run(stream, |instant| {
-                    ModuleMessageKind::from(TimingEvent::Tick(instant))
-                })
-            }
+            TimingEvent::Init(stream) => Task::done(ModuleMessageKind::Subscribe(Channel("tick")))
+                .chain(Task::run(stream, |_instant| {
+                    ModuleMessageKind::Publish(super::message::PublishMessage {
+                        channel: Channel("tick"),
+                        data: ChannelData::Trigger,
+                    })
+                })),
             TimingEvent::Tick(instant) => {
                 println!("Timing Module: TICK {instant:?}");
                 Task::none()
             }
+            TimingEvent::Failed => {
+                println!("Timing module failed event");
+                Task::none()
+            }
         }
+    }
+
+    fn on_message(&mut self, message: ModuleMessageKind) -> Task<ModuleMessageKind> {
+        println!("Module received message {message:?}");
+        Task::none()
     }
 }

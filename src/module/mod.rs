@@ -20,7 +20,10 @@ use iced::{
 use message::{ModuleMessage, ModuleMessageKind};
 use tracing::{debug, debug_span, Instrument as _};
 
-use crate::{NodeId, NodeRef};
+use crate::{
+    parser::module::{ModuleArgument, ModuleArguments},
+    NodeId, NodeRef,
+};
 
 pub(crate) type HandleId = u64;
 pub(crate) type DynModule<E> = Box<dyn Module<Event = E>>;
@@ -47,7 +50,12 @@ pub trait Module: ModuleAsync + MaybeSend + MaybeSync + std::fmt::Debug {
     ///
     /// Calls synchronous initialization functions in the module implementation,
     /// and returns an async Task to the iced runtime to call the async module init() method.
-    fn start(&mut self, handle: ModuleHandle<Self::Event>, node_id: NodeId) -> Task<ModuleMessage>
+    fn start(
+        &mut self,
+        handle: ModuleHandle<Self::Event>,
+        node_id: NodeId,
+        args: ModuleArguments,
+    ) -> Task<ModuleMessage>
     where
         Self::Event: 'static,
     {
@@ -73,7 +81,7 @@ pub trait Module: ModuleAsync + MaybeSend + MaybeSync + std::fmt::Debug {
 
                     span.in_scope(|| debug!("Async init"));
 
-                    let event = module.init(init_data).instrument(span).await;
+                    let event = module.init(args, init_data).instrument(span).await;
                     ModuleMessage::from((handle_id, event))
                 }
                 Err(e) => ModuleMessage::from((handle_id, crate::Error::from(e))),
@@ -95,5 +103,5 @@ pub trait Module: ModuleAsync + MaybeSend + MaybeSync + std::fmt::Debug {
 #[async_trait]
 pub trait ModuleAsync {
     type Event: ModuleEvent;
-    async fn init(&mut self, init_data: ModuleAsyncInitData) -> Self::Event;
+    async fn init(&mut self, args: ModuleArguments, init_data: ModuleAsyncInitData) -> Self::Event;
 }

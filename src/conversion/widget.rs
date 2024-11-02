@@ -41,17 +41,6 @@ impl SnowcapWidget {
                         ValueKind::Integer(_) => todo!(),
                         ValueKind::Boolean(_) => todo!(),
                         ValueKind::Array(_vec) => todo!(),
-                        ValueKind::Dynamic { data, provider: _ } => {
-                            if let Some(data) = data {
-                                if let DataType::Image(handle) = &**data {
-                                    Ok(DynamicWidget::default().with_widget(Image::new(handle)))
-                                } else {
-                                    Ok(SnowcapWidget::loading())
-                                }
-                            } else {
-                                Ok(SnowcapWidget::loading())
-                            }
-                        }
                         ValueKind::None => todo!(),
                     }
                 } else {
@@ -68,18 +57,6 @@ impl SnowcapWidget {
                         ValueKind::Integer(_) => todo!(),
                         ValueKind::Boolean(_) => todo!(),
                         ValueKind::Array(_vec) => todo!(),
-                        ValueKind::Dynamic { data, provider: _ } => {
-                            if let Some(data) = data {
-                                if let DataType::Svg(handle) = &**data {
-                                    Ok(DynamicWidget::default()
-                                        .with_widget(Svg::new(handle.clone())))
-                                } else {
-                                    Ok(SnowcapWidget::loading())
-                                }
-                            } else {
-                                Ok(SnowcapWidget::loading())
-                            }
-                        }
                         ValueKind::None => todo!(),
                     }
                 } else {
@@ -91,29 +68,6 @@ impl SnowcapWidget {
             "markdown" => {
                 if let WidgetContent::Value(value) = content {
                     match value.inner() {
-                        ValueKind::Dynamic { data, provider: _ } => {
-                            if let Some(data) = data {
-                                if let DataType::Markdown(markdown_items) = &**data {
-                                    let markdown = iced::widget::markdown(
-                                        markdown_items.into_iter(),
-                                        iced::widget::markdown::Settings::default(),
-                                        iced::widget::markdown::Style::from_palette(
-                                            iced::Theme::default().palette(),
-                                        ),
-                                    )
-                                    .map(move |url| {
-                                        M::from((node_id, WidgetMessage::Markdown(url)))
-                                    });
-
-                                    Ok(DynamicWidget::default()
-                                        .with_widget(ElementWrapper::new(markdown)))
-                                } else {
-                                    Ok(SnowcapWidget::loading())
-                                }
-                            } else {
-                                Ok(SnowcapWidget::loading())
-                            }
-                        }
                         _ => Err(ConversionError::InvalidType(
                             "unexpected markdown {value:?}".into(),
                         )),
@@ -124,6 +78,8 @@ impl SnowcapWidget {
                     ))
                 }
             }
+
+            /*
             "qr-code" => {
                 if let WidgetContent::Value(value) = content {
                     let data = value
@@ -157,6 +113,7 @@ impl SnowcapWidget {
                     ))
                 }
             }
+            */
             "text" => {
                 let mut text = if let WidgetContent::Value(value) = content {
                     Text::new(value.inner())

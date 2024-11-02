@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use iced::Task;
 use tracing::debug;
 
+use crate::parser::module::ModuleArguments;
+
 use super::{
     message::ModuleMessageKind, Module, ModuleAsync, ModuleAsyncInitData, ModuleEvent, ModuleInit,
 };
@@ -21,7 +23,11 @@ impl ModuleInit for Foo {}
 #[async_trait]
 impl ModuleAsync for Foo {
     type Event = FooEvent;
-    async fn init(&mut self, _init_data: ModuleAsyncInitData) -> Self::Event {
+    async fn init(
+        &mut self,
+        args: ModuleArguments,
+        _init_data: ModuleAsyncInitData,
+    ) -> Self::Event {
         debug!("Test module init");
         FooEvent::Init("Hello World".into())
     }

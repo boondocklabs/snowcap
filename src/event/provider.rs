@@ -72,37 +72,45 @@ where
             let res = match data_node.content_mut() {
                 crate::node::Content::Value(value) => match data {
                     crate::data::FileData::Svg(handle) => match value.inner_mut() {
+                        /*
                         ValueKind::Dynamic { data, provider: _ } => {
                             data.replace(Arc::new(DataType::Svg(handle)));
                             Ok(())
                         }
+                        */
                         _ => Err(Error::Unhandled(
                             "Expecting Value::Data in Svg handler".into(),
                         )),
                     },
                     crate::data::FileData::Image(handle) => match value.inner_mut() {
+                        /*
                         ValueKind::Dynamic { data, provider: _ } => {
                             data.replace(Arc::new(DataType::Image(handle)));
                             Ok(())
                         }
+                        */
                         _ => Err(Error::Unhandled(
                             "Expecting Value::Data in Svg handler".into(),
                         )),
                     },
                     crate::data::FileData::Markdown(items) => match value.inner_mut() {
+                        /*
                         ValueKind::Dynamic { data, provider: _ } => {
                             data.replace(Arc::new(DataType::Markdown(MarkdownItems::new(items))));
                             Ok(())
                         }
+                        */
                         _ => Err(Error::Unhandled(
                             "Expecting Value::Data in Svg handler".into(),
                         )),
                     },
                     crate::data::FileData::Text(text) => match value.inner_mut() {
+                        /*
                         ValueKind::Dynamic { data, provider: _ } => {
                             data.replace(Arc::new(DataType::Text(text)));
                             Ok(())
                         }
+                        */
                         _ => Err(Error::Unhandled(
                             "Expecting Value::Data in Svg handler".into(),
                         )),

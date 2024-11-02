@@ -12,6 +12,7 @@ use crate::{
     },
     dynamic_widget::DynamicWidget,
     message::{Event, WidgetMessage},
+    module::{manager::ModuleManager, message::ModuleMessage},
     node::{Content, SnowcapNode, State},
     parser::value::ValueKind,
     ConversionError, IndexedTree, NodeId, NodeRef, Value,
@@ -100,8 +101,10 @@ impl WidgetCache {
     where
         M: Clone + std::fmt::Debug + From<Event> + MaybeSend + 'static,
     {
+        /*
         match value.inner() {
             // If a dynamic node is invalidated, get the init task from the provider
+
             ValueKind::Dynamic { data: _, provider } => {
                 if let Some(provider) = provider {
                     if let Some(mut guard) = provider.try_lock() {
@@ -122,6 +125,9 @@ impl WidgetCache {
             }
             _ => None,
         }
+        */
+
+        None
     }
 
     /// Find dirty node paths, mark nodes as dirty along the path and drop widgets.
@@ -132,12 +138,14 @@ impl WidgetCache {
     #[profiling::function]
     fn mark_dirty_paths<M>(
         tree: &IndexedTree<M>,
+        modules: &mut ModuleManager,
     ) -> Result<(Vec<NodeRef<M>>, Vec<Task<M>>), ConversionError>
     where
         M: Clone
             + std::fmt::Debug
             + From<(NodeId, WidgetMessage)>
             + From<Event>
+            + From<ModuleMessage>
             + MaybeSend
             + 'static,
     {
@@ -161,12 +169,28 @@ impl WidgetCache {
 
             match node.data().get_state() {
                 State::New => {
+                    if let Content::Module(module) = node.data().content() {
+                        println!("HAVE A NEW MODULE");
+                        match ModuleManager::from_string(module.name()) {
+                            Ok(kind) => {
+                                println!("Kind: {kind}");
+
+                                let handle_id = modules.create(kind);
+                                let task = modules.start(handle_id, module.args());
+                                tasks.push(task.map(|m| M::from(m)));
+                            }
+                            Err(_e) => todo!(),
+                        }
+                    }
+
+                    /*
                     // Check if this node is attached to a provider, and get the init task
                     if let Content::Value(value) = node.data().content() {
                         if let Some(task) = Self::handle_provider::<M>(node.id(), value) {
                             tasks.push(task)
                         }
                     }
+                    */
 
                     drop(node);
                     update_queue.push(noderef.clone());
@@ -312,7 +336,10 @@ impl WidgetCache {
                     panic!("No widget in root");
                 }
             }
-            Content::Module(_module) => todo!(),
+            Content::Module(module) => {
+                //println!("Module! {module:#?}");
+                None
+            }
             Content::Value(_value) => None,
             Content::None => None,
         };
@@ -322,12 +349,16 @@ impl WidgetCache {
 
     /// Perform updates to widgets in the tree
     #[profiling::function]
-    pub fn update_tree<M>(tree: &IndexedTree<M>) -> Result<Task<M>, ConversionError>
+    pub fn update_tree<M>(
+        tree: &IndexedTree<M>,
+        module_manager: &mut ModuleManager,
+    ) -> Result<Task<M>, ConversionError>
     where
         M: Clone
             + std::fmt::Debug
             + From<(NodeId, WidgetMessage)>
             + From<Event>
+            + From<ModuleMessage>
             + MaybeSend
             + 'static,
     {
@@ -335,7 +366,7 @@ impl WidgetCache {
 
         debug_span!("tree-update").in_scope(|| {
             // First pass - Find dirty paths, mark nodes along the paths as dirty, and drop cached widgets
-            let (queue, tasks) = Self::mark_dirty_paths(tree)?;
+            let (queue, tasks) = Self::mark_dirty_paths(tree, module_manager)?;
 
             for noderef in queue {
                 let node = noderef.try_node()?;
@@ -380,7 +411,7 @@ impl WidgetCache {
 mod tests {
     use tracing_test::traced_test;
 
-    use crate::{tree_util::WidgetCache, Message, SnowcapParser};
+    use crate::{module::manager::ModuleManager, tree_util::WidgetCache, Message, SnowcapParser};
 
     #[traced_test]
     #[test]
@@ -393,6 +424,8 @@ mod tests {
 
         println!("{}", tree.root());
 
-        let _task = WidgetCache::update_tree(&tree).unwrap();
+        let mut modules = ModuleManager::new();
+
+        let _task = WidgetCache::update_tree(&tree, &mut modules).unwrap();
     }
 }

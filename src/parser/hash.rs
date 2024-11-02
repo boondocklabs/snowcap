@@ -35,14 +35,6 @@ impl std::hash::Hash for ValueKind {
             ValueKind::Integer(num) => state.write(&num.to_ne_bytes()),
             ValueKind::Boolean(b) => b.hash(state),
             ValueKind::Array(vec) => vec.hash(state),
-            ValueKind::Dynamic { data: _, provider } => {
-                //data.hash(state);
-
-                if let Some(provider) = provider {
-                    let provider = provider.lock();
-                    provider.hash_source(state);
-                }
-            }
             ValueKind::None => {}
         }
     }

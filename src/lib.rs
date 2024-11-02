@@ -42,14 +42,10 @@ use message::Event;
 use message::EventKind;
 use message::MessageDiscriminants;
 use message::WidgetMessage;
-use module::handle::ModuleHandle;
 use module::manager::ModuleManager;
 use module::registry::ModuleKind;
-use module::timing::TimingEvent;
-use node::Content;
 use node::SnowcapNode;
 use parking_lot::Mutex;
-use parser::value::ValueKind;
 use tracing::warn;
 use tree_util::WidgetCache;
 use xxhash_rust::xxh64::Xxh64;
@@ -197,6 +193,7 @@ where
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn watch_tree_files(&mut self) -> Result<(), Error> {
+        /*
         self.notify_state.lock().provider_map.clear();
 
         info!("Walking tree and adding files to watcher");
@@ -218,6 +215,7 @@ where
                 _ => {}
             }
         }
+        */
 
         Ok(())
     }
@@ -311,7 +309,7 @@ where
         let tree_task = if let Some(tree) = &*self.tree.lock() {
             profiling::scope!("build-widgets");
             info!("{}", tree.root());
-            match WidgetCache::update_tree(tree) {
+            match WidgetCache::update_tree(tree, &mut self.modules) {
                 Ok(task) => task,
                 Err(e) => {
                     error!("Failed to build widgets: {}", e);
@@ -323,15 +321,6 @@ where
         };
 
         tasks.push(tree_task);
-
-        /*
-        let mut fooref = self.timing_module.try_module_mut().unwrap();
-        let task = fooref
-            .start(self.timing_module.clone(), 0)
-            .map(|event| Message::from(event));
-
-        tasks.push(task);
-        */
 
         info!("Starting init tasks");
 
@@ -574,7 +563,7 @@ where
         let tree_task = if let Some(tree) = &*self.tree.lock() {
             profiling::scope!("build-widgets");
             info!("{}", tree.root());
-            match WidgetCache::update_tree(tree) {
+            match WidgetCache::update_tree(tree, &mut self.modules) {
                 Ok(task) => task,
                 Err(e) => {
                     error!("Failed to build widgets: {}", e);

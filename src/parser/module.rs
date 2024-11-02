@@ -1,11 +1,76 @@
+use std::collections::HashMap;
+
 use colored::Colorize;
 use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{module::handle::ModuleHandle, parser::value::ValueParser};
 
 use super::{error::ParseError, ParserContext, Value};
+
+#[derive(Default, Debug, Clone)]
+pub struct ModuleArguments {
+    arguments: HashMap<String, Value>,
+}
+
+impl ModuleArguments {
+    pub fn sort(&self) -> Vec<ModuleArgument> {
+        let mut v: Vec<ModuleArgument> = self
+            .arguments
+            .iter()
+            .map(|(k, v)| ModuleArgument {
+                name: k.clone(),
+                value: v.clone(),
+            })
+            .collect();
+
+        v.sort_by(|this, other| this.name.cmp(&other.name));
+        v
+    }
+
+    pub fn insert(&mut self, arg: ModuleArgument) {
+        let name = arg.name.clone();
+        if let Some(old) = self.arguments.insert(arg.name, arg.value) {
+            warn!("Argument '{}' replaced old value: {}", name, old);
+        }
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Value> {
+        self.arguments.get(name)
+    }
+}
+
+impl std::fmt::Display for ModuleArguments {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let v = self.sort();
+
+        if !v.is_empty() {
+            write!(f, "args=")?;
+            let mut iter = v.iter().peekable();
+
+            while let Some(arg) = iter.next() {
+                write!(f, "{}", arg)?;
+                if iter.peek().is_some() {
+                    write!(f, ", ")?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl std::hash::Hash for ModuleArguments {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Collect the arguments into a vec, and sort them by name
+        // for deterministic argument hashing.
+
+        for arg in &self.sort() {
+            arg.hash(state)
+        }
+    }
+}
 
 #[derive(Default, Debug, Hash, Clone)]
 pub struct ModuleArgument {
@@ -24,25 +89,26 @@ pub struct Module {
     /// Parser context from the parent parser
     context: Option<ParserContext>,
     name: String,
-    args: Vec<ModuleArgument>,
+    //args: Vec<ModuleArgument>,
+    args: ModuleArguments,
     handle: Option<ModuleHandle<crate::module::test::FooEvent>>,
+}
+
+impl Module {
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn args(&self) -> &ModuleArguments {
+        &self.args
+    }
 }
 
 impl std::fmt::Display for Module {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}", self.name.bright_magenta(),)?;
+        write!(f, "[{}", self.name.bright_magenta())?;
 
-        if !self.args.is_empty() {
-            write!(f, " args=")?;
-            let mut iter = self.args.iter().peekable();
-
-            while let Some(arg) = iter.next() {
-                write!(f, "{}", arg)?;
-                if iter.peek().is_some() {
-                    write!(f, ", ")?;
-                }
-            }
-        }
+        write!(f, "{}", self.args);
 
         write!(f, " handle={:?}]", self.handle)?;
 
@@ -135,7 +201,7 @@ impl ModuleParser {
 
     fn parse_arguments(
         pair: Pair<Rule>,
-        dest: &mut Vec<ModuleArgument>,
+        dest: &mut ModuleArguments,
         context: &ParserContext,
     ) -> Result<(), ParseError> {
         for pair in pair.into_inner() {
@@ -143,7 +209,7 @@ impl ModuleParser {
             match pair.as_rule() {
                 Rule::argument => {
                     let argument = Self::parse_argument(pair, context)?;
-                    dest.push(argument);
+                    dest.insert(argument);
                 }
                 // Handle unsupported rules
                 _ => {

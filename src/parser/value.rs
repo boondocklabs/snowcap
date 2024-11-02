@@ -62,26 +62,6 @@ impl Value {
         }
     }
 
-    pub fn new_provider(provider: impl Provider<H = crate::SnowHasher> + 'static) -> Self {
-        Self {
-            inner: ValueKind::Dynamic {
-                data: None,
-                provider: Some(Arc::new(Mutex::new(provider))),
-            },
-            context: None,
-        }
-    }
-
-    pub fn new_data(data: DataType) -> Self {
-        Self {
-            inner: ValueKind::Dynamic {
-                data: Some(Arc::new(data)),
-                provider: None,
-            },
-            context: None,
-        }
-    }
-
     pub fn with_context(mut self, context: ParserContext) -> Self {
         self.context = Some(context);
         self
@@ -101,16 +81,6 @@ impl Value {
         } else {
             Err(ConversionError::InvalidType(
                 "expecting ValueKind::Array".into(),
-            ))
-        }
-    }
-
-    pub fn dynamic(&self) -> Result<&Option<Arc<DataType>>, ConversionError> {
-        if let ValueKind::Dynamic { data, .. } = self.inner() {
-            Ok(data)
-        } else {
-            Err(ConversionError::InvalidType(
-                "expecting ValueKind::Dynamic".into(),
             ))
         }
     }
@@ -139,10 +109,12 @@ pub enum ValueKind {
     Integer(u64),
     Boolean(bool),
     Array(Vec<Value>),
+    /*
     Dynamic {
         data: Option<Arc<DataType>>,
         provider: Option<Arc<Mutex<DynProvider>>>,
     },
+    */
 }
 
 impl std::fmt::Display for ValueKind {
@@ -163,14 +135,6 @@ impl std::fmt::Display for ValueKind {
                 }
                 f.write_char(']')
             }
-            ValueKind::Dynamic { provider, .. } => {
-                if let Some(provider) = provider {
-                    provider.lock().fmt(f)
-                    //write!(f, "Dynamic {}", provider)
-                } else {
-                    write!(f, "Dynamic no provider")
-                }
-            }
             ValueKind::None => write!(f, "None"),
         }
     }
@@ -178,6 +142,24 @@ impl std::fmt::Display for ValueKind {
 
 impl Borrow<String> for Value {
     fn borrow(&self) -> &String {
+        match &self.inner {
+            ValueKind::String(s) => s,
+            _ => panic!("Cannot borrow string for non-string typed value"),
+        }
+    }
+}
+
+impl Borrow<str> for Value {
+    fn borrow(&self) -> &str {
+        match &self.inner {
+            ValueKind::String(s) => s,
+            _ => panic!("Cannot borrow string for non-string typed value"),
+        }
+    }
+}
+
+impl<'a> Into<&'a String> for &'a Value {
+    fn into(self) -> &'a String {
         match &self.inner {
             ValueKind::String(s) => s,
             _ => panic!("Cannot borrow string for non-string typed value"),
@@ -211,6 +193,8 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &ValueKind {
             ValueKind::Float(n) => format!("{n}").into(),
             ValueKind::Integer(n) => format!("{n}").into(),
             ValueKind::Boolean(b) => format!("{b}").into(),
+
+            /*
             ValueKind::Dynamic { data, .. } => match &*data {
                 Some(data) => match &**data {
                     crate::data::DataType::Text(text) => text.clone().into(),
@@ -218,6 +202,7 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &ValueKind {
                 },
                 None => format!("No Data Loaded").into(),
             },
+            */
             ValueKind::Array(_value) => todo!(),
             ValueKind::None => format!("None").into(),
         }

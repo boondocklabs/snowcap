@@ -6,6 +6,21 @@ use crate::Message;
 
 use super::{event::ModuleEvent, HandleId};
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Channel(pub &'static str);
+
+#[derive(Clone, Debug)]
+pub enum ChannelData {
+    Trigger,
+    String(String),
+}
+
+#[derive(Clone, Debug)]
+pub struct PublishMessage {
+    pub channel: Channel,
+    pub data: ChannelData,
+}
+
 #[derive(Default, Debug, Clone)]
 pub enum ModuleMessageKind {
     #[default]
@@ -13,6 +28,15 @@ pub enum ModuleMessageKind {
     Debug(&'static str),
     Error(Arc<crate::Error>),
     Event(Arc<Box<dyn Any + Send + Sync>>),
+
+    /// Module requesting a subscription to a channel
+    Subscribe(Channel),
+
+    /// Publish a message to a channel
+    Publish(PublishMessage),
+
+    /// A published message being sent to a module
+    Published(PublishMessage),
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +61,10 @@ impl ModuleMessage {
     /// To take ownership of the inner kind, use [`ModuleMessage::take_kind()`]
     pub fn kind(&self) -> &ModuleMessageKind {
         &self.kind
+    }
+
+    pub fn kind_mut(&mut self) -> &mut ModuleMessageKind {
+        &mut self.kind
     }
 
     /// Take the inner [`ModuleMessageKind`] out of this [`ModuleMessage`],

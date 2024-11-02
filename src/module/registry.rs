@@ -4,7 +4,7 @@ use strum::EnumString;
 
 use super::{error::ModuleError, manager::ModuleManager, HandleId};
 
-#[derive(EnumString)]
+#[derive(EnumString, strum::Display)]
 #[strum(ascii_case_insensitive)]
 pub enum ModuleKind {
     Timing,
@@ -19,10 +19,10 @@ impl ModuleManager {
         }
     }
 
-    pub fn from_string(name: String) -> Result<ModuleKind, ModuleError> {
-        match ModuleKind::from_str(name.as_str()) {
+    pub fn from_string(name: &str) -> Result<ModuleKind, ModuleError> {
+        match ModuleKind::from_str(name) {
             Ok(kind) => Ok(kind),
-            Err(_e) => Err(ModuleError::Unknown(name)),
+            Err(_e) => Err(ModuleError::Unknown(name.into())),
         }
     }
 }

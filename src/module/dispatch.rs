@@ -2,7 +2,7 @@ use std::{any::Any, sync::Arc};
 
 use iced::Task;
 
-use crate::{ConversionError, Error, NodeId};
+use crate::{parser::module::ModuleArguments, ConversionError, Error, NodeId};
 
 use super::{event::ModuleEvent, message::ModuleMessage, ModuleHandle};
 
@@ -17,7 +17,7 @@ use super::{event::ModuleEvent, message::ModuleMessage, ModuleHandle};
 /// and the closure returns a Task<ModuleMessage>.
 pub struct ModuleDispatch {
     /// Start the module
-    start: Box<dyn FnMut(NodeId) -> Task<ModuleMessage>>,
+    start: Box<dyn for<'b> FnMut(NodeId, &'b ModuleArguments) -> Task<ModuleMessage>>,
 
     // Closure function that takes a dyn Any of a [`ModuleEvent`] impl
     // this closure will downcast the Any
@@ -66,13 +66,13 @@ impl ModuleDispatch {
         });
 
         let start_handle = handle.clone();
-        let handle_id = start_handle.id();
-        let start = Box::new(move |node_id| {
-            let mut module = start_handle.try_module_mut().unwrap();
-            let task = module.start(start_handle.clone(), node_id);
-            //task.map(move |kind| ModuleMessage::new(handle_id, kind))
-            task
-        });
+        let start: Box<dyn for<'b> FnMut(NodeId, &'b ModuleArguments) -> Task<ModuleMessage>> =
+            Box::new(move |node_id, args| {
+                let mut module = start_handle.try_module_mut().unwrap();
+                let task = module.start(start_handle.clone(), node_id, args.clone());
+                //task.map(move |kind| ModuleMessage::new(handle_id, kind))
+                task
+            });
 
         Self {
             start,
@@ -92,7 +92,7 @@ impl ModuleDispatch {
     }
 
     /// Start the module
-    pub fn start(&mut self, node_id: NodeId) -> Task<ModuleMessage> {
-        (self.start)(node_id)
+    pub fn start(&mut self, node_id: NodeId, args: &ModuleArguments) -> Task<ModuleMessage> {
+        (self.start)(node_id, args)
     }
 }
