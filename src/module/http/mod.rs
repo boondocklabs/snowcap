@@ -38,4 +38,9 @@ impl Module for HttpModule {
 
         Task::done(ModuleMessageKind::Debug("on_event done!"))
     }
+
+    fn on_message(&mut self, _message: ModuleMessageKind) -> Task<ModuleMessageKind> {
+        println!("HTTP on_message!");
+        Task::none()
+    }
 }

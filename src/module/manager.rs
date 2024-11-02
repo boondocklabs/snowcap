@@ -40,7 +40,9 @@ impl ModuleManager {
         Task::batch(tasks)
     }
 
-    /// Create a new [`Module`] and register it with the dynamic event dispatcher
+    /// Create a new [`Module`] instance and register it with this module manager.
+    ///
+    /// A ModuleDispatch instance is created providing type erasure for the ModuleEvent type
     pub fn create_inner<T: ModuleInit + Module>(&mut self) -> HandleId {
         //ModuleHandle<T::Event> {
         // Get a new unique ID for this module
@@ -53,14 +55,31 @@ impl ModuleManager {
 
         // Create a dispatcher for this module, which downcasts dyn Any events back
         // to the concrete type.
-        let dispatcher = ModuleDispatch::new(handle.clone());
+        let dispatcher = ModuleDispatch::new(handle);
 
         // Register the ModuleDispatch in a HashMap, so we can dispatch messages back
         // to this module using its unique HandleId
         self.dispatchers.insert(id, dispatcher);
 
-        //handle
+        // Return the HandleId of this module instance
         id
+    }
+
+    /// Start the specified module
+    pub fn start(&mut self, id: HandleId) -> Task<ModuleMessage> {
+        if let Some(dispatcher) = self.dispatchers.get_mut(&id) {
+            dispatcher.start(0)
+        } else {
+            // Create a task that emits a ModuleError message in the iced runtime
+
+            Task::done(ModuleMessage::from((
+                id,
+                crate::Error::from(ModuleError::HandleNotFound {
+                    handle_id: id,
+                    msg: "event dispatch",
+                }),
+            )))
+        }
     }
 
     /// Dispatch an event to a module specified by HandleId. The event will be downcast back to
@@ -72,6 +91,26 @@ impl ModuleManager {
     ) -> Task<ModuleMessage> {
         if let Some(dispatcher) = self.dispatchers.get_mut(&id) {
             dispatcher.handle_event(event)
+        } else {
+            Task::done(ModuleMessage::from((
+                id,
+                crate::Error::from(ModuleError::HandleNotFound {
+                    handle_id: id,
+                    msg: "event dispatch",
+                }),
+            )))
+        }
+    }
+
+    /// Dispatch an event to a module specified by HandleId. The event will be downcast back to
+    /// the concrete type by [`ModuleDispatch`]
+    pub fn dispatch_message(
+        &mut self,
+        id: HandleId,
+        message: ModuleMessage,
+    ) -> Task<ModuleMessage> {
+        if let Some(dispatcher) = self.dispatchers.get_mut(&id) {
+            dispatcher.handle_message(message)
         } else {
             Task::done(ModuleMessage::from((
                 id,
@@ -102,6 +141,8 @@ impl ModuleManager {
             }
             // Dispatch an event message to the module
             ModuleMessageKind::Event(event) => self.dispatch_event(message.handle_id(), event),
+
+            _ => self.dispatch_message(message.handle_id(), message),
         }
     }
 }

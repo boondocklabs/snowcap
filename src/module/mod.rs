@@ -20,7 +20,7 @@ use iced::{
 use message::{ModuleMessage, ModuleMessageKind};
 use tracing::{debug, debug_span, Instrument as _};
 
-use crate::{dynamic_widget::DynamicWidget, NodeId, NodeRef, SyncError};
+use crate::{NodeId, NodeRef};
 
 pub(crate) type HandleId = u64;
 pub(crate) type DynModule<E> = Box<dyn Module<Event = E>>;
@@ -43,8 +43,10 @@ pub trait ModuleInit: Default + Sized + Module + 'static {
 
 /// Module trait, implemented by each module.
 pub trait Module: ModuleAsync + MaybeSend + MaybeSync + std::fmt::Debug {
-    /// Module startup. Call synchronous initialization functions in the module implementation,
-    /// and return an async Task to the iced runtime to call the async module init() method.
+    /// Module startup.
+    ///
+    /// Calls synchronous initialization functions in the module implementation,
+    /// and returns an async Task to the iced runtime to call the async module init() method.
     fn start(&mut self, handle: ModuleHandle<Self::Event>, node_id: NodeId) -> Task<ModuleMessage>
     where
         Self::Event: 'static,
@@ -79,9 +81,15 @@ pub trait Module: ModuleAsync + MaybeSend + MaybeSync + std::fmt::Debug {
         })
     }
 
-    fn init_tree(&mut self, tree: Option<&NodeRef<Self::Event>>) {}
+    fn init_tree(&mut self, _tree: Option<&NodeRef<Self::Event>>) {}
 
-    fn on_event(&mut self, event: Self::Event) -> Task<ModuleMessageKind>;
+    fn on_event(&mut self, _event: Self::Event) -> Task<ModuleMessageKind> {
+        Task::none()
+    }
+
+    fn on_message(&mut self, _message: ModuleMessageKind) -> Task<ModuleMessageKind> {
+        Task::none()
+    }
 }
 
 #[async_trait]

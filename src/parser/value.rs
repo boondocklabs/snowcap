@@ -239,7 +239,7 @@ impl ValueParser {
         if let Some(root) = pairs.into_iter().last() {
             for pair in root.into_inner() {
                 value = match pair.as_rule() {
-                    Rule::string => Value::new_string(pair.as_str().into()),
+                    Rule::string => Value::new_string(pair.into_inner().as_str().into()),
                     Rule::float => {
                         Value::new_float(pair.as_str().parse().map_err(ParseError::Float)?)
                     }
