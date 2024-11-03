@@ -105,7 +105,6 @@ pub mod module;
 mod node;
 mod parser;
 mod util;
-mod widget;
 
 use arbutus::TreeDiff;
 use arbutus::TreeNode as _;
