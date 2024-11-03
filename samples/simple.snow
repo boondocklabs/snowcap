@@ -1,6 +1,0 @@
-{
-  |[
-    {-[text("Hello1"), text("Hello2"), text("Hello3")]},
-    {text("World")}
-  ]
-}
