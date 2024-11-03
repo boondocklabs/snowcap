@@ -34,7 +34,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 url = "2.5.2"
 xxhash-rust = { version = "0.8.12", features = ["xxh64"] }
 
-arbutus = { path = "../arbutus" }
+arbutus = { version = "0.1.5", path = "../arbutus" }
 colored = "2.1.0"
 profiling = { version = "1.0" }
 async-trait = "0.1.83"
