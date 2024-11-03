@@ -1,15 +1,9 @@
-use std::{hash::Hash, path::PathBuf, sync::Arc};
+use std::{hash::Hash, path::PathBuf};
 
 use iced::widget::markdown::Url;
-use parking_lot::Mutex;
 use strum::{EnumDiscriminants, EnumIter};
 
-use crate::{
-    data::provider::{DynProvider, ProviderEvent},
-    module::message::ModuleMessage,
-    parser::ElementId,
-    NodeId,
-};
+use crate::{module::message::ModuleMessageContainer, parser::ElementId, NodeId};
 
 /// Represents a message that can be passed within the application.
 /// This enum encapsulates both application-specific messages and other events.
@@ -34,7 +28,7 @@ pub enum Message<AppMessage> {
 
     Event(Event),
 
-    Module(ModuleMessage),
+    Module(ModuleMessageContainer),
 
     Command(Command),
 }
@@ -100,7 +94,7 @@ pub enum Event {
     #[cfg(not(target_arch = "wasm32"))]
     WatchFileRequest {
         filename: PathBuf,
-        provider: Arc<Mutex<DynProvider>>,
+        //provider: Arc<Mutex<DynProvider>>,
     },
 
     /// A filesystem notification event was received
@@ -108,8 +102,6 @@ pub enum Event {
     FsNotify(notify::Event),
 
     FsNotifyError(String),
-
-    Provider(ProviderEvent),
 }
 
 impl Default for Event {

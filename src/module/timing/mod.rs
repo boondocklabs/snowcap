@@ -1,16 +1,15 @@
-use std::time::Duration;
-
 use async_trait::async_trait;
 use iced::Task;
 use tokio::time::Instant;
 use tokio_stream::wrappers::IntervalStream;
 use tracing::{debug, error};
 
-use crate::{parser::module::ModuleArguments, NodeRef};
+use crate::{module::argument::ModuleArguments, NodeRef};
 
 use super::{
-    message::{Channel, ChannelData, ModuleMessageKind},
-    Module, ModuleAsync, ModuleAsyncInitData, ModuleEvent, ModuleInit,
+    error::ModuleError,
+    message::{ModuleMessage, Topic, TopicMessage},
+    Module, ModuleEvent, ModuleInitData,
 };
 
 #[derive(Debug)]
@@ -22,55 +21,56 @@ pub enum TimingEvent {
 impl ModuleEvent for TimingEvent {}
 
 #[derive(Default, Debug)]
-pub struct TimingModule {
-    stream: Option<IntervalStream>,
-}
-impl ModuleInit for TimingModule {}
+pub struct TimingModule {}
 
 #[async_trait]
-impl ModuleAsync for TimingModule {
+impl Module for TimingModule {
     type Event = TimingEvent;
     async fn init(
         &mut self,
         args: ModuleArguments,
-        _init_data: ModuleAsyncInitData,
-    ) -> Self::Event {
+        _init_data: ModuleInitData,
+    ) -> Result<Self::Event, ModuleError> {
         debug!("Timing module init");
 
-        debug!("Arguments: {}", args);
+        /*
+        let interval = args
+            .get("interval")
+            .unwrap_or(&Value::new_string("1s".into()));
+        */
+        let interval = args.get("interval")?;
 
-        if let Some(interval) = args.get("interval") {
-            let interval: &String = interval.into();
-            match duration_str::parse(interval) {
-                Ok(duration) => {
-                    let interval = tokio::time::interval(duration);
-                    let stream = IntervalStream::new(interval);
+        let interval: String = interval.to_string();
+        match duration_str::parse(interval) {
+            Ok(duration) => {
+                let interval = tokio::time::interval(duration);
+                let stream = IntervalStream::new(interval);
 
-                    return TimingEvent::Init(stream);
-                }
-                Err(e) => {
-                    error!("Failed to convert interval argument");
-                }
+                Ok(TimingEvent::Init(stream))
+            }
+            Err(e) => {
+                error!("Failed to convert interval argument");
+                Err(ModuleError::InvalidArgument(format!(
+                    "Cannot parse interval: '{e}'"
+                )))
             }
         }
-
-        TimingEvent::Failed
     }
-}
 
-impl Module for TimingModule {
     fn init_tree(&mut self, tree: Option<&NodeRef<Self::Event>>) {
         debug!("Initialize tree in Timing module: {tree:#?}");
     }
-    fn on_event(&mut self, event: Self::Event) -> Task<ModuleMessageKind> {
+
+    fn on_event(&mut self, event: Self::Event) -> Task<ModuleMessage> {
         match event {
-            TimingEvent::Init(stream) => Task::done(ModuleMessageKind::Subscribe(Channel("tick")))
-                .chain(Task::run(stream, |_instant| {
-                    ModuleMessageKind::Publish(super::message::PublishMessage {
-                        channel: Channel("tick"),
-                        data: ChannelData::Trigger,
+            TimingEvent::Init(stream) => Task::done(ModuleMessage::Subscribe(Topic("tick"))).chain(
+                Task::run(stream, |_instant| {
+                    ModuleMessage::Publish(super::message::PublishMessage {
+                        topic: Topic("tick"),
+                        message: TopicMessage::Trigger,
                     })
-                })),
+                }),
+            ),
             TimingEvent::Tick(instant) => {
                 println!("Timing Module: TICK {instant:?}");
                 Task::none()
@@ -82,8 +82,11 @@ impl Module for TimingModule {
         }
     }
 
-    fn on_message(&mut self, message: ModuleMessageKind) -> Task<ModuleMessageKind> {
-        println!("Module received message {message:?}");
+    fn on_message(&mut self, _message: ModuleMessage) -> Task<ModuleMessage> {
+        Task::none()
+    }
+
+    fn on_subscription(&mut self, _topic: Topic, _message: TopicMessage) -> Task<ModuleMessage> {
         Task::none()
     }
 }

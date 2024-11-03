@@ -1,28 +1,53 @@
 use std::any::Any;
 use std::sync::Arc;
 
+use colored::Colorize;
+
 use crate::Error;
 use crate::Message;
 
 use super::{event::ModuleEvent, HandleId};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Channel(pub &'static str);
+pub struct Topic(pub &'static str);
+
+impl std::fmt::Display for Topic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.bright_green())
+    }
+}
 
 #[derive(Clone, Debug)]
-pub enum ChannelData {
+pub enum TopicMessage {
     Trigger,
     String(String),
 }
 
+impl std::fmt::Display for TopicMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("{:?}", self).bright_cyan())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PublishMessage {
-    pub channel: Channel,
-    pub data: ChannelData,
+    pub topic: Topic,
+    pub message: TopicMessage,
+}
+
+impl std::fmt::Display for PublishMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[topic={} message={}]",
+            self.topic.to_string().magenta(),
+            self.message.to_string().green()
+        )
+    }
 }
 
 #[derive(Default, Debug, Clone)]
-pub enum ModuleMessageKind {
+pub enum ModuleMessage {
     #[default]
     None,
     Debug(&'static str),
@@ -30,7 +55,7 @@ pub enum ModuleMessageKind {
     Event(Arc<Box<dyn Any + Send + Sync>>),
 
     /// Module requesting a subscription to a channel
-    Subscribe(Channel),
+    Subscribe(Topic),
 
     /// Publish a message to a channel
     Publish(PublishMessage),
@@ -39,16 +64,21 @@ pub enum ModuleMessageKind {
     Published(PublishMessage),
 }
 
+/// A container for [`ModuleMessage`] containing additional decorations
+/// for dynamic dispatch of messages to module instances.
 #[derive(Debug, Clone)]
-pub struct ModuleMessage {
+pub struct ModuleMessageContainer {
     handle_id: HandleId,
-    kind: ModuleMessageKind,
+    message: ModuleMessage,
 }
 
-impl ModuleMessage {
+impl ModuleMessageContainer {
     /// Create a new ModuleMessage with the specified module HandleId and inner message kind
-    pub fn new(handle_id: HandleId, kind: ModuleMessageKind) -> Self {
-        Self { handle_id, kind }
+    pub fn new(handle_id: HandleId, kind: ModuleMessage) -> Self {
+        Self {
+            handle_id,
+            message: kind,
+        }
     }
 
     /// Get the module handle ID associated with this message
@@ -56,29 +86,30 @@ impl ModuleMessage {
         self.handle_id
     }
 
-    /// Get a reference to the inner [`ModuleMessageKind`].
+    /// Get a reference to the inner [`ModuleMessage`].
     ///
     /// To take ownership of the inner kind, use [`ModuleMessage::take_kind()`]
-    pub fn kind(&self) -> &ModuleMessageKind {
-        &self.kind
+    pub fn message(&self) -> &ModuleMessage {
+        &self.message
     }
 
-    pub fn kind_mut(&mut self) -> &mut ModuleMessageKind {
-        &mut self.kind
+    /// Get a mutable reference to the inner [`ModuleMessage`]
+    pub fn message_mut(&mut self) -> &mut ModuleMessage {
+        &mut self.message
     }
 
-    /// Take the inner [`ModuleMessageKind`] out of this [`ModuleMessage`],
+    /// Take the inner [`ModuleMessage`] out of this [`ModuleMessage`],
     /// leaving the default in its place.
-    pub fn take_kind(&mut self) -> ModuleMessageKind {
-        std::mem::take(&mut self.kind)
+    pub fn take_message(&mut self) -> ModuleMessage {
+        std::mem::take(&mut self.message)
     }
 }
 
-impl<T: ModuleEvent + 'static> From<(HandleId, T)> for ModuleMessage {
+impl<T: ModuleEvent + 'static> From<(HandleId, T)> for ModuleMessageContainer {
     fn from(value: (HandleId, T)) -> Self {
-        ModuleMessage {
+        ModuleMessageContainer {
             handle_id: value.0,
-            kind: ModuleMessageKind::Event(Arc::new(Box::new(value.1))),
+            message: ModuleMessage::Event(Arc::new(Box::new(value.1))),
         }
     }
 }
@@ -86,15 +117,21 @@ impl<T: ModuleEvent + 'static> From<(HandleId, T)> for ModuleMessage {
 /// Implement from any T which implements [`ModuleEvent`] on Message.
 /// This will wrap the [`ModuleEvent`] in an Arc, and return a new
 /// Message::ModuleEvent message containing an Arc<dyn ModuleEvent>
-impl<AppMessage> From<ModuleMessage> for Message<AppMessage> {
-    fn from(value: ModuleMessage) -> Self {
+impl<AppMessage> From<ModuleMessageContainer> for Message<AppMessage> {
+    fn from(value: ModuleMessageContainer) -> Self {
         Message::Module(value)
     }
 }
 
 /// Convert a tuple of (HandleId, crate::Error) into a ModuleMessage
-impl From<(HandleId, Error)> for ModuleMessage {
+impl From<(HandleId, Error)> for ModuleMessageContainer {
     fn from(value: (HandleId, Error)) -> Self {
-        ModuleMessage::new(value.0, ModuleMessageKind::Error(Arc::new(value.1)))
+        ModuleMessageContainer::new(value.0, ModuleMessage::Error(Arc::new(value.1)))
+    }
+}
+
+impl From<Error> for ModuleMessage {
+    fn from(err: Error) -> Self {
+        ModuleMessage::Error(Arc::new(err))
     }
 }

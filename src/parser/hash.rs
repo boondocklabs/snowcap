@@ -1,4 +1,4 @@
-use super::{Value, ValueKind};
+use super::{Value, ValueData};
 use crate::data::DataType;
 use tracing::warn;
 
@@ -25,17 +25,17 @@ impl std::hash::Hash for DataType {
     }
 }
 
-impl std::hash::Hash for ValueKind {
+impl std::hash::Hash for ValueData {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
 
         match self {
-            ValueKind::String(s) => s.hash(state),
-            ValueKind::Float(num) => state.write(&num.to_ne_bytes()),
-            ValueKind::Integer(num) => state.write(&num.to_ne_bytes()),
-            ValueKind::Boolean(b) => b.hash(state),
-            ValueKind::Array(vec) => vec.hash(state),
-            ValueKind::None => {}
+            ValueData::String(s) => s.hash(state),
+            ValueData::Float(num) => state.write(&num.to_ne_bytes()),
+            ValueData::Integer(num) => state.write(&num.to_ne_bytes()),
+            ValueData::Boolean(b) => b.hash(state),
+            ValueData::Array(vec) => vec.hash(state),
+            ValueData::None => {}
         }
     }
 }

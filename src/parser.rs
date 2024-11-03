@@ -1,3 +1,5 @@
+//! The parsers process Snowcap grammar and produces an [`arbutus::Tree`]
+
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::Path;
@@ -9,7 +11,7 @@ use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 use pest_derive::Parser;
 use tracing::{debug, debug_span};
-use value::{ValueKind, ValueParser};
+use value::{ValueData, ValueParser};
 
 use crate::attribute::Attributes;
 
@@ -41,10 +43,7 @@ type SnowNodeBuilder<'a, M> = NodeBuilder<
     crate::NodeRef<M>,
 >;
 
-/// Snowcap parser
-///
-/// This parser uses Pest grammar to parse snowcap text into TreeNodes
-
+/// Parses a top level Snowcap grammar and produces an [`arbutus::Tree`] of [`crate::node::SnowcapNode`] nodes.
 #[derive(Parser)]
 #[grammar = "snowcap.pest"]
 pub struct SnowcapParser<M> {
@@ -65,7 +64,7 @@ impl<M> SnowcapParser<M>
 where
     M: Clone + std::fmt::Debug + From<Event> + From<(NodeId, WidgetMessage)>,
 {
-    /// Parse a file into a `TreeNode`.
+    /// Parse a Snowcap file into an [`arbutus::Tree`].
     ///
     /// # Arguments
     ///
@@ -73,14 +72,14 @@ where
     ///
     /// # Returns
     ///
-    /// A `Result` containing the parsed `TreeNode`, or an error if parsing fails.
+    /// A `Result` containing the parsed [`arbutus::Tree`], or a [`crate::Error`] if parsing fails.
     pub fn parse_file(filename: &Path) -> Result<Tree<M>, crate::Error> {
         tracing::info!("Parsing file {filename:?}");
         let data = std::fs::read_to_string(filename).expect("cannot read file");
         SnowcapParser::<M>::parse_memory(data.as_str()).map_err(|e| crate::Error::Parse(e))
     }
 
-    /// Parse Snowcap string into a `TreeNode`.
+    /// Parse a Snowcap string from memory into an [`arbutus::Tree`].
     ///
     /// # Arguments
     ///
@@ -88,7 +87,7 @@ where
     ///
     /// # Returns
     ///
-    /// A `Result` containing the root `TreeNode`, or an error if parsing fails.
+    /// A `Result` containing the parsed [`arbutus::Tree`], or a [`crate::Error`] if parsing fails.
     pub fn parse_memory(data: &str) -> Result<Tree<M>, ParseErrorContext> {
         debug_span!("parser").in_scope(|| {
             let markup = SnowcapParser::<M>::parse(Rule::markup, data)
@@ -136,32 +135,31 @@ where
         self
     }
 
+    /// Parse [`Attributes`] from the pairs
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the parsed [`Attributes`], or [`ParseError`] on failure
     fn parse_attributes(pair: Pair<Rule>) -> Result<Attributes, ParseError> {
         AttributeParser::parse_attributes(pair.as_str())
     }
 
-    /*
-    fn parse_array(&self, pair: Pair<Rule>) -> Result<Value, ParseError> {
-        let context = ParserContext::from(&pair);
-
-        let values: Result<Vec<Value>, ParseError> = pair
-            .into_inner()
-            .map(|i| {
-                self.parse_value(i.clone())
-                    .map(|v| v.with_context(ParserContext::from(&i)))
-            })
-            .collect();
-
-        Ok(Value::new_array(values?).with_context(context))
-    }
-    */
-
+    /// Parse [`Value`] from the pairs
     fn parse_value(&self, pair: Pair<Rule>) -> Result<Value, ParseError> {
         let context = ParserContext::from(&pair);
         debug!("value {:?} {}", pair.as_rule(), pair.as_str());
         ValueParser::parse_str(pair.as_str(), &context)
     }
 
+    /// Parse a Container widget.
+    ///
+    /// Parses the ID and [`Attributes`] for this container,
+    /// and one of a `row`, `column`, `stack`, or `widget`
+    /// as the contents of the container, and adds it
+    /// as a child of the parent using the supplied NodeBuilder.
+    ///
+    /// The supplied NodeBuilder provides the context of the parent node.
+    ///
     fn parse_container<'b>(
         &mut self,
         pair: Pair<Rule>,
@@ -213,6 +211,8 @@ where
         Ok(())
     }
 
+    /// Parse an element list (used for row, column, and stack) as these
+    /// types can accept multiple elements as their contents.
     fn parse_element_list<'b>(
         &mut self,
         pairs: Pairs<Rule>,
@@ -245,6 +245,13 @@ where
         }
     }
 
+    /// Parse a Row widget.
+    ///
+    /// Parses the ID and [`Attributes`] for this row, and an element list as the contents.
+    /// The row is then added as a child of the parent using the supplied NodeBuilder.
+    ///
+    /// The supplied NodeBuilder provides the context of the parent node.
+    ///
     fn parse_row<'b>(
         &mut self,
         pair: Pair<Rule>,
@@ -253,7 +260,7 @@ where
         let node = SnowcapNode::new(Content::Row);
 
         builder.child(node, |row| {
-            debug!("Parsing column contents");
+            debug!("Parsing row contents");
             let (id, attrs) = self.parse_element_list(pair.into_inner(), row)?;
             row.node_mut()
                 .with_data_mut(|data| {
@@ -266,6 +273,13 @@ where
         })
     }
 
+    /// Parse a Column widget.
+    ///
+    /// Parses the ID and [`Attributes`] for this column, and an element list as the contents.
+    /// The column is then added as a child of the parent using the supplied NodeBuilder.
+    ///
+    /// The supplied NodeBuilder provides the context of the parent node.
+    ///
     fn parse_column<'b>(
         &mut self,
         pair: Pair<Rule>,
@@ -287,6 +301,13 @@ where
         })
     }
 
+    /// Parse a Stack widget.
+    ///
+    /// Parses the ID and [`Attributes`] for this stack, and an element list as the contents.
+    /// The stack is then added as a child of the parent using the supplied NodeBuilder.
+    ///
+    /// The supplied NodeBuilder provides the context of the parent node.
+    ///
     fn parse_stack<'b>(
         &mut self,
         pair: Pair<Rule>,
@@ -309,6 +330,13 @@ where
         })
     }
 
+    /// Parse a generic widget.
+    ///
+    /// Parses the ID and [`Attributes`] for this widget, and recursively parses its content.
+    /// The widget is then added as a child of the parent using the supplied NodeBuilder.
+    ///
+    /// The supplied NodeBuilder provides the context of the parent node.
+    ///
     fn parse_widget<'b>(
         &mut self,
         pair: Pair<Rule>,
@@ -349,14 +377,6 @@ where
 
                         widget.child(node, |_| Ok(()))?;
                     }
-                    /*
-                    Rule::array => {
-                        let value = self.parse_array(pair)?;
-                        let node = SnowcapNode::new(Content::Value(value));
-
-                        widget.child(node, |_| Ok(()))?;
-                    }
-                    */
                     Rule::widget => {
                         self.parse_pair(pair, widget)?;
                     }
@@ -382,6 +402,13 @@ where
         Ok(())
     }
 
+    /// Parse a [`crate::parser::module::Module`], using a [`ModuleParser`].
+    ///
+    /// A new [`SnowcapNode`] with [`Content::Module`] containing the parsed module description
+    /// is added as a child of the parent node.
+    ///
+    /// The supplied NodeBuilder provides the context of the parent node.
+    ///
     fn parse_module<'b>(
         &mut self,
         pair: Pair<Rule>,
@@ -397,6 +424,8 @@ where
         Ok(())
     }
 
+    /// Handle a [`Pair`], matching on the [`Rule`] from the PEG to dispatch it
+    /// to one of the specific [`Pair`] parsing functions above.
     pub(crate) fn parse_pair<'b>(
         &mut self,
         pair: Pair<Rule>,

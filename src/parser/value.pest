@@ -1,3 +1,5 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
 string = ${ "\"" ~ inner ~ "\"" }
 inner  = @{ char* }
 char   =  {
@@ -17,4 +19,8 @@ false   = { ^"false" }
 
 none = { ^"none" | ^"null" }
 
-value = { SOI ~ (string | float | integer | boolean | none) ~ EOI }
+array = { "[" ~ values ~ ("," ~ values)* ~ "]" }
+
+values = { (string | float | integer | boolean | none | array) }
+
+value = { SOI ~ values ~ EOI }

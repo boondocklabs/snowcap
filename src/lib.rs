@@ -1,12 +1,106 @@
+//! # Snowcap GUI Markup Engine
+//!
+//! <div class="warning">
+//! Warning: Snowcap is under active development, and is very unstable.
+//! Much of the planned functionality is unimplemented, and things will break frequently.
+//! </div>
+//!
+//! Snowcap is a GUI Markup Engine based on [`iced`], it provides a [`pest`] based grammar to
+//! process markup sources, and parse them into a tree using [`arbutus`](https://github.com/boondocklabs/arbutus).
+//!
+//! A [`snowcap-viewer`] application is available which serves as a good example of a top level application built on [`snowcap`].
+//!
+//! ## Hot Reloading
+//! Hot reloading is a key goal of [`snowcap`]. Markup files loaded with [`Snowcap::load_file()`] are monitored for changes using [`notify`], and will
+//! automatically be reloaded on change.
+//!
+//! ## Tree Diffing
+//! Tree diffing using Xxh64 hashes is implemented in [`arbutus`] and used to determine changes between the trees, and only affected nodes are
+//! replaced from the new tree into the live tree. Dirty paths are then marked and rebuilt in the [`Snowcap::update()`] phase.
+//!
+//! ## Widget Caching
+//!
+//! Snowcap caches widgets in-tree, and a root [`iced::Element`] is created from the root widget by reference on each [`Snowcap::view()`] phase.
+//!
+//! Each underlying iced Widget is wrapped in a [`DynamicWidget`] in an `Arc<RwLock>` and owned by a [`SnowcapNode`] (the tree node container).
+//! Each [`DynamicWidget`] instance can issue at most one active [`dynamic_widget::WidgetRef`], which contains an owned [`parking_lot::ArcRwLockWriteGuard`]
+//! ensuring exclusive mutable access to the widget by reference. This reference can then be converted to an [`iced::Element`], and iced then Deref's through
+//! the guard back into Snowcap owned widgets in the tree.
+//!
+//! When the tree needs to be updated after a diff, the tree is iterated in reverse starting from the leaf nodes, and
+//! any dirty [`DynamicWidget`] instances along affected paths are are dropped, inherently dropping the held guards
+//! along the path. Node references where widgets are dropped are collected into a queue during this iteration pass, and new
+//! widgets are built from the queue (starting with leaves to build children first), and replaced in each [`SnowcapNode`].
+//!
+//! ## Modules
+//!
+//! There is a module framework in [`module`] which allows for creation of dynamic functionality that can be referenced in the snowcap markup.
+//! Modules can be defined in the markup as widget contents to provide their data from the network or a file, and they can subscribe to topics
+//! and publish messages.
+//!
+//! Arguments can be specified for modules in the grammar using `{key: value (, key:value)+}` and are
+//! passed to [`crate::module::Module::init()`] as [`crate::module::argument::ModuleArguments`].
+//!
+//! ### Internal Modules
+//!
+//! | Module              | Description                  | Example Grammar      |
+//! |---------------------|-----------------------------------|----------------------|
+//! | [`module::file`]    | Loading files from the filesystem | ```image(file!{path:"pic.png"}) // Get the contents of a PNG file for an image widget ```                    |
+//! | [`module::http`]    | Making HTTP Network Requests      | ```text(http!{method:"get", url:"http://icanhazip.com"}) // Get the contents of a URL into a text widget```  |
+//! | [`module::timing`]  | Timing related functionality      | ```timing!{periodic:"1s"}  // Periodic timer triggering every second```                                      |
+//!
+//!
+//! ### Custom Modules
+//! Custom modules can be defined by implementing [`module::Module`] on your own struct, and registering it with the engine using [`Snowcap::modules()`]
+//! to get the [`ModuleManager`], and calling [`ModuleManager::register()`].
+//!
+//!
+//! ```ignore
+//! // Register a module with a Snowcap Engine
+//! snowcap.modules().register<MyModule>("custom-module");
+//! ```
+//!
+//! The sealed traits [`module::internal::ModuleInit`] and [`module::internal::ModuleInternal`] get automatically blanket implemented on
+//! any type implementing [`module::Module`] to handle instantation and dynamic message dispatching.
+//!
+//! All that's generally required is implementing [`module::Module::init()`], and one or more of
+//!
+//! * [`module::Module::on_event()`] to handle internal messages defined by [`module::Module::Event`] associated type
+//! * [`module::Module::on_subscription()`] to receive messages published to topics by other modules or the core engine
+//!
+//! In addition, a message type must be defined which implements [`module::event::ModuleEvent`] and set as the associated type [`module::Module::Event`].
+//!
+//! ## Grammar Definitions
+//! The grammar for the markup format is defined in [`pest`] parser expression grammar (PEG).
+//!
+//! The full parser is split up between different PEG definitions
+//!
+//! #### Grammar Files
+//! | Pest PEG                                |  Description      | Parser Implementation |
+//! |-----------------------------------------|-------------------|-----------------------|
+//! | [`src/snowcap.pest`](https://github.com/boondocklabs/snowcap/blob/main/src/snowcap.pest)  | Top level grammar | [`parser::SnowcapParser`]
+//! | [`src/parser/attribute.pest`](https://github.com/boondocklabs/snowcap/blob/main/src/parser/attribute.pest)  | Widget Attribute grammar | [`parser::attribute::AttributeParser`]
+//! | [`src/parser/color.pest`](https://github.com/boondocklabs/snowcap/blob/main/src/parser/color.pest)  | Color grammar | [`parser::color::ColorParser`]
+//! | [`src/parser/gradient.pest`](https://github.com/boondocklabs/snowcap/blob/main/src/parser/gradient.pest)  | Gradient grammar | [`parser::gradient::GradientParser`]
+//! | [`src/parser/module.pest`](https://github.com/boondocklabs/snowcap/blob/main/src/parser/module.pest)  | Dynamic module grammar | [`parser::module::ModuleParser`]
+//! | [`src/parser/value.pest`](https://github.com/boondocklabs/snowcap/blob/main/src/parser/value.pest)  | Value grammar | [`parser::value::ValueParser`]
+//!
+//! [`snowcap-viewer`]: https://github.com/boondocklabs/snowcap-viewer
+//! [`snowcap`]: https://github.com/boondocklabs/snowcap
+//! [`arbutus`]: https://github.com/boondocklabs/arbutus
+//! [`iced`]: https://iced.rs
+//! [`pest`]: https://pest.rs
+//! [`notify`]: https://docs.rs/notify/latest/notify/
+
 mod attribute;
-mod connector;
+//mod connector;
 mod conversion;
 mod data;
 mod dynamic_widget;
 mod error;
-mod event;
+//mod event;
 mod message;
-mod module;
+pub mod module;
 mod node;
 mod parser;
 mod tree_util;
@@ -16,42 +110,23 @@ mod widget;
 use arbutus::TreeDiff;
 use arbutus::TreeNode as _;
 use arbutus::TreeNodeRef as _;
-use connector::{Endpoint, Inlet};
-use data::provider::ProviderEvent;
 use dynamic_widget::DynamicWidget;
-
-#[cfg(not(target_arch = "wasm32"))]
-use event::fsnotify::FsNotifyEventHandler;
-#[cfg(not(target_arch = "wasm32"))]
-use event::fsnotify::FsNotifyState;
-
-use event::provider::ProviderEventHandler;
-use event::provider::ProviderState;
-use event::DynamicHandler;
-use event::EventHandler;
 
 // Re-export iced
 pub use iced;
 use iced::advanced::graphics::futures::MaybeSend;
-use iced::futures;
-use iced::futures::SinkExt;
 use iced::Task;
 
 use message::Command;
 use message::Event;
-use message::EventKind;
 use message::MessageDiscriminants;
 use message::WidgetMessage;
 use module::manager::ModuleManager;
-use module::registry::ModuleKind;
 use node::SnowcapNode;
 use parking_lot::Mutex;
 use tracing::warn;
 use tree_util::WidgetCache;
-use xxhash_rust::xxh64::Xxh64;
 
-use std::any::Any;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -59,12 +134,16 @@ pub use conversion::theme::SnowcapTheme;
 pub use error::*;
 pub use message::Message;
 
+/*
+use iced::futures;
+use iced::futures::SinkExt;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::FsEventWatcher;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::RecommendedWatcher;
 #[cfg(not(target_arch = "wasm32"))]
 use notify::Watcher;
+*/
 
 pub use parser::SnowcapParser;
 pub use parser::Value;
@@ -73,20 +152,20 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 
-/*
-type Node<Data, Id> = arbutus::node::refcell::Node<Data, Id>;
+type Node<Data, Id> = arbutus::node::rc::Node<Data, Id>;
 type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
-*/
 
+/*
 type Node<Data, Id> = arbutus::node::arc::Node<Data, Id>;
 type NodeRef<M> = arbutus::noderef::arc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
+*/
 
 type Tree<M> = arbutus::Tree<NodeRef<M>>;
 type IndexedTree<M> = arbutus::IndexedTree<NodeRef<M>>;
 type NodeId = arbutus::NodeId;
 
-type SnowHasher = Xxh64;
-
+/// Top level Snowcap Engine which manages loading and parsing grammar into an [`Arbutus`](https://github.com/boondocklabs/arbutus) tree.
+/// Provides the update() and view()
 pub struct Snowcap<AppMessage>
 where
     AppMessage: Clone + std::fmt::Debug + 'static,
@@ -96,17 +175,6 @@ where
 
     tree: Arc<Mutex<Option<IndexedTree<Message<AppMessage>>>>>,
 
-    #[cfg(not(target_arch = "wasm32"))]
-    provider_watcher: FsEventWatcher,
-
-    event_endpoint: Endpoint<Event>,
-
-    event_handler: HashMap<EventKind, DynamicHandler<'static, Message<AppMessage>>>,
-
-    #[cfg(not(target_arch = "wasm32"))]
-    notify_state: Arc<Mutex<FsNotifyState<Message<AppMessage>>>>,
-    provider_state: Arc<Mutex<ProviderState<Message<AppMessage>>>>,
-
     modules: ModuleManager,
 }
 
@@ -114,81 +182,62 @@ impl<AppMessage> Snowcap<AppMessage>
 where
     AppMessage: Clone + MaybeSend + std::fmt::Debug,
 {
+    /// Create a new Snowcap Engine instance
     pub fn new() -> Result<Self, Error> {
-        let event_endpoint = Endpoint::new();
-
-        info!("Event Endpoint ID: {}", event_endpoint.id());
-
-        #[cfg(not(target_arch = "wasm32"))]
-        // Initialize the filesystem watcher
-        let provider_watcher = Self::init_watcher(event_endpoint.get_inlet());
-
         let tree = Arc::new(Mutex::new(None));
 
-        #[cfg(not(target_arch = "wasm32"))]
-        let notify_state = Arc::new(Mutex::new(FsNotifyState::new(tree.clone())));
-        let provider_state = Arc::new(Mutex::new(ProviderState::new(tree.clone())));
+        let modules = ModuleManager::new();
 
-        let mut modules = ModuleManager::new();
-        let timing_module = modules.create(ModuleKind::Timing);
-
-        let mut snow = Self {
+        let snow = Self {
             tree,
-            event_endpoint,
-            event_handler: HashMap::new(),
-            provider_state,
-            #[cfg(not(target_arch = "wasm32"))]
-            notify_state,
             #[cfg(not(target_arch = "wasm32"))]
             filename: None,
-            #[cfg(not(target_arch = "wasm32"))]
-            provider_watcher,
 
             modules,
         };
 
-        let provider_handler = ProviderEventHandler::new(snow.tree.clone());
-
-        snow.event_handler.insert(
-            EventKind::Provider,
-            DynamicHandler::new::<ProviderEvent, Arc<Mutex<ProviderState<Message<AppMessage>>>>>(
-                EventKind::Provider,
-                provider_handler,
-            ),
-        );
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let fsevent_handler = FsNotifyEventHandler::new(snow.tree.clone());
-
-        #[cfg(not(target_arch = "wasm32"))]
-        snow.event_handler.insert(
-            EventKind::FsNotify,
-            DynamicHandler::new::<notify::Event, Arc<Mutex<FsNotifyState<Message<AppMessage>>>>>(
-                EventKind::FsNotify,
-                fsevent_handler,
-            ),
-        );
-
         Ok(snow)
     }
 
-    pub fn update_widgets(&self) {
-        let mut pending = Vec::new();
+    /// Engine initialization, called by [`iced::Application`].
+    /// Traverses the tree to build widgets, and gets an init [`iced::Task`]
+    /// from each instantiated [`module`] in the tree.
+    pub fn init(&mut self) -> Task<Message<AppMessage>> {
+        let mut tasks = Vec::new();
 
-        for node in self.tree.lock().as_ref().unwrap().root() {
-            let _: Result<(), ()> = node.with_data(|inner| {
-                if inner.widget.is_none() || inner.is_dirty() {
-                    pending.push(node.clone());
+        /*
+        // Start the event listener task
+        tasks.push(Task::run(self.event_endpoint.take_outlet(), |ep_message| {
+            info!("Received event from inlet {}", ep_message.from());
+            Message::<AppMessage>::Event(ep_message.into_inner())
+        }));
+        */
+
+        // Run the initial tree update, and get any tasks (Provider init tasks)
+        let tree_task = if let Some(tree) = &*self.tree.lock() {
+            profiling::scope!("build-widgets");
+            info!("{}", tree.root());
+            match WidgetCache::update_tree(tree, &mut self.modules) {
+                Ok(task) => task,
+                Err(e) => {
+                    error!("Failed to build widgets: {}", e);
+                    Task::none()
                 }
-                Ok(())
-            });
-        }
+            }
+        } else {
+            Task::none()
+        };
 
-        //info!("Pending Updates: {pending:?}");
+        tasks.push(tree_task);
 
-        for _node in pending.into_iter().rev() {
-            //DynamicWidget::from_node(node).unwrap();
-        }
+        info!("Starting init tasks");
+
+        Task::batch(tasks)
+    }
+
+    /// Get a reference to the [`ModuleManager`] for registering and instantiating modules at runtime
+    pub fn modules(&mut self) -> &mut ModuleManager {
+        &mut self.modules
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -220,6 +269,7 @@ where
         Ok(())
     }
 
+    /*
     #[cfg(not(target_arch = "wasm32"))]
     fn init_watcher(mut inlet: Inlet<Event>) -> FsEventWatcher {
         // Create a filesystem watcher that writes events to a channel
@@ -243,32 +293,36 @@ where
 
         watcher
     }
+    */
 
+    /// Load a markup file and set the active [`arbutus`] tree.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn load_file(&mut self, filename: String) -> Result<(), Error> {
+        use colored::Colorize;
+
         let filename = &PathBuf::from(&filename);
         let tree = SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?;
 
         let tree = IndexedTree::from_tree(tree);
 
+        println!(
+            "\n{}\n{}",
+            "Snowcap file loaded into tree:".magenta(),
+            tree.root()
+        );
+
         self.filename = Some(filename.clone());
-
-        // Register the markup file with the watcher
-        self.provider_watcher
-            .watch(filename, notify::RecursiveMode::NonRecursive)?;
-
-        //self.tree = Some(tree);
 
         self.set_tree(tree)?;
 
         // Register any files referenced by the markup with the watcher
         self.watch_tree_files()?;
 
-        self.update_widgets();
-
         Ok(())
     }
 
+    /// Load markup from memory. If a tree is currently loaded, the new tree is diffed
+    /// and changes are patched into the existing tree.
     pub fn load_memory(&mut self, data: &str) -> Result<(), Error> {
         let tree = SnowcapParser::<Message<AppMessage>>::parse_memory(data)?;
 
@@ -293,38 +347,6 @@ where
     fn set_tree(&mut self, tree: IndexedTree<Message<AppMessage>>) -> Result<(), Error> {
         *self.tree.lock() = Some(tree);
         Ok(())
-    }
-
-    // Initial tasks to be executed in parallel by the iced Runtime
-    pub fn init(&mut self) -> Task<Message<AppMessage>> {
-        let mut tasks = Vec::new();
-
-        // Start the event listener task
-        tasks.push(Task::run(self.event_endpoint.take_outlet(), |ep_message| {
-            info!("Received event from inlet {}", ep_message.from());
-            Message::<AppMessage>::Event(ep_message.into_inner())
-        }));
-
-        // Run the initial tree update, and get any tasks (Provider init tasks)
-        let tree_task = if let Some(tree) = &*self.tree.lock() {
-            profiling::scope!("build-widgets");
-            info!("{}", tree.root());
-            match WidgetCache::update_tree(tree, &mut self.modules) {
-                Ok(task) => task,
-                Err(e) => {
-                    error!("Failed to build widgets: {}", e);
-                    Task::none()
-                }
-            }
-        } else {
-            Task::none()
-        };
-
-        tasks.push(tree_task);
-
-        info!("Starting init tasks");
-
-        Task::batch(tasks)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -452,68 +474,42 @@ where
     }
 
     fn handle_event(&mut self, event: Event) -> Task<Message<AppMessage>> {
-        let event_type: EventKind = (&event).into();
-        if let Some(handler) = self.event_handler.get(&event_type) {
-            debug!("Found handler {handler:#?}");
-            let (module_event, module_state): (Box<dyn Any>, Box<dyn Any>) = match event {
-                #[cfg(not(target_arch = "wasm32"))]
-                Event::FsNotify(event) => (Box::new(event), Box::new(self.notify_state.clone())),
-                Event::Provider(provider_event) => (
-                    Box::new(provider_event),
-                    Box::new(self.provider_state.clone()),
-                ),
-                _ => {
-                    error!("Dynamic event handler was found, but missing event Box inner extraction pattern for {:?}", event);
-                    panic!();
-                }
-            };
-
-            debug!("Entering event handler");
-            match handler.handle(module_event, module_state) {
-                Ok(task) => {
-                    debug!("Event handler returned");
-                    task
-                }
-                Err(e) => {
-                    error!("{e:?}");
-                    Task::none()
-                }
+        match event {
+            #[cfg(not(target_arch = "wasm32"))]
+            Event::FsNotifyError(e) => {
+                error!("FsNotifyError {e:#?}");
+                Task::none()
             }
-        } else {
-            // Event wasn't handled by dynamic dispatch
-            match event {
-                #[cfg(not(target_arch = "wasm32"))]
-                Event::FsNotifyError(e) => {
-                    error!("FsNotifyError {e:#?}");
-                    Task::none()
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                Event::WatchFileRequest { filename, provider } => {
-                    info!("{provider:?} register {filename:?} with watcher");
 
-                    match self
-                        .provider_watcher
-                        .watch(&filename, notify::RecursiveMode::NonRecursive)
-                    {
-                        Ok(_) => {
-                            info!("Successfully added {filename:?} to watcher");
+            /*
+            #[cfg(not(target_arch = "wasm32"))]
+            Event::WatchFileRequest { filename, provider } => {
+                info!("{provider:?} register {filename:?} with watcher");
 
-                            // Add the Provider to the map
-                            self.notify_state
-                                .lock()
-                                .provider_map
-                                .insert(filename.clone(), provider);
-                        }
-                        Err(e) => {
-                            error!("Failed to add {filename:?} to watcher: {e:#?}")
-                        }
+                /*
+                match self
+                    .provider_watcher
+                    .watch(&filename, notify::RecursiveMode::NonRecursive)
+                {
+                    Ok(_) => {
+                        info!("Successfully added {filename:?} to watcher");
+
+                        // Add the Provider to the map
+                        self.notify_state
+                            .lock()
+                            .provider_map
+                            .insert(filename.clone(), provider);
                     }
-
-                    Task::none()
+                    Err(e) => {
+                        error!("Failed to add {filename:?} to watcher: {e:#?}")
+                    }
                 }
+                */
 
-                _ => Task::none(),
+                Task::none()
             }
+            */
+            _ => Task::none(),
         }
     }
 

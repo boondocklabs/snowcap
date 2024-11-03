@@ -13,13 +13,15 @@ float = @{
     "-"? ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)? ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)?
 }
 
-integer = @{ ASCII_DIGIT* }
+integer = @{ ASCII_DIGIT+ }
 
 boolean = { true | false }
 true    = { ^"true" }
 false   = { ^"false" }
 
-value    = { (string | float | boolean | true | false | integer) }
+value = { (string | float | boolean | true | false | integer | array) }
+array = { "[" ~ value ~ ("," ~ value)* ~ "]" }
+
 argument = { argument_name ~ ":" ~ value }
 
 // Consume everything inside {, } to pass to ModuleParser

@@ -89,6 +89,9 @@ where
     /// Instance ID of this module
     id: HandleId,
 
+    /// Name of the Module
+    name: String,
+
     /// Reference to the root subtree node within the main Snowcap tree manageed by this module
     subtree: Option<NodeRef<E>>,
 
@@ -104,6 +107,10 @@ where
 {
     pub fn id(&self) -> HandleId {
         self.id
+    }
+
+    pub fn name(&self) -> &String {
+        &self.name
     }
 
     pub fn subtree(&self) -> Option<&NodeRef<E>> {
@@ -144,6 +151,7 @@ where
     fn clone(&self) -> Self {
         Self {
             id: self.id,
+            name: self.name.clone(),
             raw: self.raw.clone(),
             subtree: None,
         }
@@ -154,11 +162,12 @@ impl<E> ModuleHandle<E>
 where
     E: ModuleEvent + 'static,
 {
-    pub fn new(id: HandleId, module: impl Module<Event = E> + 'static) -> Self {
+    pub fn new(name: String, id: HandleId, module: impl Module<Event = E> + 'static) -> Self {
         let m: DynModule<E> = Box::new(module);
         let module = Arc::new(RwLock::new(m));
 
         Self {
+            name,
             id,
             raw: ModuleHandleRaw { module },
             subtree: None,

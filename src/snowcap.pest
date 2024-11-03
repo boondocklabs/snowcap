@@ -9,9 +9,9 @@ container = {
     "{" ~ ("<" ~ attributes ~ ">")? ~ (!container ~ element)? ~ "}"
 }
 
-row    = { ("row" | "-") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
-column = { ("col" | "|") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
-stack  = { ("stack" | "^") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
+row    = { (^"row" | "-") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
+column = { (^"column" | ^"col" | "|") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
+stack  = { (^"stack" | "^") ~ (id)? ~ ("<" ~ attributes ~ ">")? ~ element_list }
 
 element_list = _{ "[" ~ element ~ ("," ~ element)* ~ "]" }
 
@@ -25,7 +25,8 @@ attributes = @{ (!("<" | ">") ~ ANY)* }
 id = { "#" ~ label }
 
 element_value = _{ module | value }
-value         =  { string | number | boolean | null }
+array         =  { "[" ~ value ~ ("," ~ value)* ~ "]" }
+value         =  { string | number | boolean | null | array }
 
 module = { label ~ "!" ~ "{" ~ module_arguments ~ "}" }
 

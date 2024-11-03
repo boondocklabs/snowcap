@@ -48,6 +48,9 @@ pub enum ConversionError {
 
     #[error(transparent)]
     Sync(#[from] SyncError),
+
+    #[error(transparent)]
+    Module(#[from] ModuleError),
 }
 
 #[derive(Error, Debug)]

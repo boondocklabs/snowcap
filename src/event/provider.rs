@@ -8,7 +8,7 @@ use tracing::debug;
 
 use crate::{
     data::{provider::ProviderEvent, DataType, FileData, MarkdownItems},
-    parser::value::ValueKind,
+    parser::value::ValueData,
     Error, IndexedTree, NodeId, SyncError,
 };
 
@@ -71,7 +71,7 @@ where
         node.with_data_mut(|data_node| {
             let res = match data_node.content_mut() {
                 crate::node::Content::Value(value) => match data {
-                    crate::data::FileData::Svg(handle) => match value.inner_mut() {
+                    crate::data::FileData::Svg(_handle) => match value.inner_mut() {
                         /*
                         ValueKind::Dynamic { data, provider: _ } => {
                             data.replace(Arc::new(DataType::Svg(handle)));
@@ -82,7 +82,7 @@ where
                             "Expecting Value::Data in Svg handler".into(),
                         )),
                     },
-                    crate::data::FileData::Image(handle) => match value.inner_mut() {
+                    crate::data::FileData::Image(_handle) => match value.inner_mut() {
                         /*
                         ValueKind::Dynamic { data, provider: _ } => {
                             data.replace(Arc::new(DataType::Image(handle)));
@@ -93,7 +93,7 @@ where
                             "Expecting Value::Data in Svg handler".into(),
                         )),
                     },
-                    crate::data::FileData::Markdown(items) => match value.inner_mut() {
+                    crate::data::FileData::Markdown(_items) => match value.inner_mut() {
                         /*
                         ValueKind::Dynamic { data, provider: _ } => {
                             data.replace(Arc::new(DataType::Markdown(MarkdownItems::new(items))));
@@ -104,7 +104,7 @@ where
                             "Expecting Value::Data in Svg handler".into(),
                         )),
                     },
-                    crate::data::FileData::Text(text) => match value.inner_mut() {
+                    crate::data::FileData::Text(_text) => match value.inner_mut() {
                         /*
                         ValueKind::Dynamic { data, provider: _ } => {
                             data.replace(Arc::new(DataType::Text(text)));

@@ -1,12 +1,11 @@
 use crate::attribute::{AttributeKind, AttributeValue};
-use crate::data::DataType;
-use crate::parser::value::ValueKind;
+use crate::parser::value::ValueData;
 use crate::tree_util::WidgetContent;
-use crate::util::ElementWrapper;
+//use crate::util::ElementWrapper;
 use crate::NodeId;
-use iced::widget::{Button, PickList, QRCode, Rule, Space, Svg, Themer, Toggler};
-use iced::widget::{Image, Text};
-use tracing::{error, warn};
+use iced::widget::Text;
+use iced::widget::{Button, PickList, Rule, Space, Themer, Toggler};
+use tracing::warn;
 
 use crate::attribute::Attributes;
 use crate::dynamic_widget::DynamicWidget;
@@ -36,12 +35,12 @@ impl SnowcapWidget {
             "image" => {
                 if let WidgetContent::Value(value) = content {
                     match value.inner() {
-                        ValueKind::String(_) => todo!(),
-                        ValueKind::Float(_) => todo!(),
-                        ValueKind::Integer(_) => todo!(),
-                        ValueKind::Boolean(_) => todo!(),
-                        ValueKind::Array(_vec) => todo!(),
-                        ValueKind::None => todo!(),
+                        ValueData::String(_) => todo!(),
+                        ValueData::Float(_) => todo!(),
+                        ValueData::Integer(_) => todo!(),
+                        ValueData::Boolean(_) => todo!(),
+                        ValueData::Array(_vec) => todo!(),
+                        ValueData::None => todo!(),
                     }
                 } else {
                     Err(ConversionError::InvalidType(
@@ -52,12 +51,12 @@ impl SnowcapWidget {
             "svg" => {
                 if let WidgetContent::Value(value) = content {
                     match value.inner() {
-                        ValueKind::String(_) => todo!(),
-                        ValueKind::Float(_) => todo!(),
-                        ValueKind::Integer(_) => todo!(),
-                        ValueKind::Boolean(_) => todo!(),
-                        ValueKind::Array(_vec) => todo!(),
-                        ValueKind::None => todo!(),
+                        ValueData::String(_) => todo!(),
+                        ValueData::Float(_) => todo!(),
+                        ValueData::Integer(_) => todo!(),
+                        ValueData::Boolean(_) => todo!(),
+                        ValueData::Array(_vec) => todo!(),
+                        ValueData::None => todo!(),
                     }
                 } else {
                     Err(ConversionError::InvalidType(

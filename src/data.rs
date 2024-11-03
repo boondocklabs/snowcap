@@ -3,15 +3,14 @@ use std::sync::Arc;
 use crate::error::ConversionError;
 use iced::widget::markdown::Item;
 
+/*
 pub(crate) mod file_data;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod file_provider;
 pub(crate) mod provider;
 pub(crate) mod url_provider;
-
 pub(crate) use file_data::FileData;
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) use file_provider::FileProvider;
+*/
 
 #[derive(Debug)]
 pub struct MarkdownItems(Arc<Vec<Item>>);

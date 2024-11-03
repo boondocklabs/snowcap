@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use arbutus::{TreeNode, TreeNodeRef as _};
 use iced::{advanced::graphics::futures::MaybeSend, Element, Task};
-use tracing::{debug, debug_span, error};
+use tracing::{debug, debug_span};
 
 use crate::{
     attribute::Attributes,
@@ -12,9 +12,8 @@ use crate::{
     },
     dynamic_widget::DynamicWidget,
     message::{Event, WidgetMessage},
-    module::{manager::ModuleManager, message::ModuleMessage},
+    module::{manager::ModuleManager, message::ModuleMessageContainer},
     node::{Content, SnowcapNode, State},
-    parser::value::ValueKind,
     ConversionError, IndexedTree, NodeId, NodeRef, Value,
 };
 
@@ -95,41 +94,6 @@ where
 pub struct WidgetCache;
 
 impl WidgetCache {
-    /// Handle an invalidated dynamic provider, returning the init Task
-    /// of the provider to start execution from update()
-    fn handle_provider<M>(node_id: NodeId, value: &Value) -> Option<Task<M>>
-    where
-        M: Clone + std::fmt::Debug + From<Event> + MaybeSend + 'static,
-    {
-        /*
-        match value.inner() {
-            // If a dynamic node is invalidated, get the init task from the provider
-
-            ValueKind::Dynamic { data: _, provider } => {
-                if let Some(provider) = provider {
-                    if let Some(mut guard) = provider.try_lock() {
-                        let task = guard
-                            .init_task(provider.clone(), node_id)
-                            .map(|e| M::from(e));
-
-                        println!("GOT INIT TASK FOR PROVIDER {guard}");
-                        Some(task)
-                    } else {
-                        error!("Failed to lock provider mutex");
-                        None
-                    }
-                } else {
-                    // No provider for this dynamic node. (data originates from markup such as QR code data with qr!())
-                    None
-                }
-            }
-            _ => None,
-        }
-        */
-
-        None
-    }
-
     /// Find dirty node paths, mark nodes as dirty along the path and drop widgets.
     ///
     /// This must be done in its own scope so the RwLock write guards in WidgetRef are released.
@@ -145,7 +109,7 @@ impl WidgetCache {
             + std::fmt::Debug
             + From<(NodeId, WidgetMessage)>
             + From<Event>
-            + From<ModuleMessage>
+            + From<ModuleMessageContainer>
             + MaybeSend
             + 'static,
     {
@@ -170,17 +134,23 @@ impl WidgetCache {
             match node.data().get_state() {
                 State::New => {
                     if let Content::Module(module) = node.data().content() {
-                        println!("HAVE A NEW MODULE");
+                        let task = modules
+                            .instantiate(module.name(), module.args().clone())?
+                            .map(|m| M::from(m));
+                        tasks.push(task);
+
+                        /*
                         match ModuleManager::from_string(module.name()) {
                             Ok(kind) => {
                                 println!("Kind: {kind}");
 
-                                let handle_id = modules.create(kind);
+                                let handle_id = modules.internal(kind);
                                 let task = modules.start(handle_id, module.args());
                                 tasks.push(task.map(|m| M::from(m)));
                             }
                             Err(_e) => todo!(),
                         }
+                        */
                     }
 
                     /*
@@ -336,7 +306,7 @@ impl WidgetCache {
                     panic!("No widget in root");
                 }
             }
-            Content::Module(module) => {
+            Content::Module(_module) => {
                 //println!("Module! {module:#?}");
                 None
             }
@@ -358,7 +328,7 @@ impl WidgetCache {
             + std::fmt::Debug
             + From<(NodeId, WidgetMessage)>
             + From<Event>
-            + From<ModuleMessage>
+            + From<ModuleMessageContainer>
             + MaybeSend
             + 'static,
     {

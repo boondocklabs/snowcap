@@ -1,11 +1,12 @@
 [package]
 name = "snowcap"
-version = "0.1.4"
+version = "0.1.5-dev.0"
 edition = "2021"
 license = "MIT"
 description = "A simple markup language for iced"
 homepage = "https://github.com/boondocklabs/snowcap"
 repository = "https://github.com/boondocklabs/snowcap"
+documentation = "https://docs.rs/snowcap"
 readme = "README.md"
 
 [dependencies]

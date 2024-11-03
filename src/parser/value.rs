@@ -1,26 +1,21 @@
+use crate::ConversionError;
+
 use super::{error::ParseError, ParserContext};
-use crate::{
-    data::{
-        provider::{DynProvider, Provider},
-        DataType,
-    },
-    ConversionError,
-};
 use iced::widget::text::IntoFragment;
-use parking_lot::Mutex;
-use pest::Parser as _;
+use pest::{iterators::Pair, Parser as _};
 use pest_derive::Parser;
-use std::{borrow::Borrow, fmt::Write, ops::Deref, sync::Arc};
+use std::{borrow::Borrow, fmt::Write, ops::Deref};
+use strum::EnumDiscriminants;
 use tracing::debug;
 
 #[derive(Default, Clone, Debug)]
 pub struct Value {
     context: Option<ParserContext>,
-    inner: ValueKind,
+    inner: ValueData,
 }
 
 impl Value {
-    pub fn new(inner: ValueKind) -> Self {
+    pub fn new(inner: ValueData) -> Self {
         Self {
             inner,
             context: None,
@@ -29,35 +24,35 @@ impl Value {
 
     pub fn new_string(val: String) -> Self {
         Self {
-            inner: ValueKind::String(val),
+            inner: ValueData::String(val),
             context: None,
         }
     }
 
     pub fn new_float(val: f64) -> Self {
         Self {
-            inner: ValueKind::Float(val),
+            inner: ValueData::Float(val),
             context: None,
         }
     }
 
     pub fn new_integer(val: u64) -> Self {
         Self {
-            inner: ValueKind::Integer(val),
+            inner: ValueData::Integer(val),
             context: None,
         }
     }
 
     pub fn new_bool(val: bool) -> Self {
         Self {
-            inner: ValueKind::Boolean(val),
+            inner: ValueData::Boolean(val),
             context: None,
         }
     }
 
     pub fn new_array(val: Vec<Self>) -> Self {
         Self {
-            inner: ValueKind::Array(val),
+            inner: ValueData::Array(val),
             context: None,
         }
     }
@@ -67,16 +62,56 @@ impl Value {
         self
     }
 
-    pub fn inner(&self) -> &ValueKind {
+    pub fn inner(&self) -> &ValueData {
         &self.inner
     }
 
-    pub fn inner_mut(&mut self) -> &mut ValueKind {
+    pub fn inner_mut(&mut self) -> &mut ValueData {
         &mut self.inner
     }
 
+    /// Return true if this Value inner data kind is [`ValueDataKind`]
+    pub fn is_kind(&self, kind: ValueDataKind) -> bool {
+        kind == ValueDataKind::from(self.inner())
+    }
+
+    /// Get a f64 from this Value. If the inner type is an integer,
+    /// it will be converted to float and returned.
+    pub fn float(&self) -> Result<f64, ConversionError> {
+        match self.inner() {
+            ValueData::Float(float) => Ok(*float),
+            ValueData::Integer(integer) => Ok(*integer as f64),
+            _ => Err(ConversionError::InvalidType(format!(
+                "expecting ValueKind::Float. Got {:?}",
+                self.inner()
+            ))),
+        }
+    }
+
+    /// Get a u64 from this Value. Inner ValueData kind must be Integer
+    pub fn integer(&self) -> Result<u64, ConversionError> {
+        match self.inner() {
+            ValueData::Integer(integer) => Ok(*integer),
+            _ => Err(ConversionError::InvalidType(format!(
+                "expecting ValueKind::Integer. Got {:?}",
+                self.inner()
+            ))),
+        }
+    }
+
+    /// Get a bool from this Value. Inner ValueData kind must be Boolean
+    pub fn boolean(&self) -> Result<bool, ConversionError> {
+        match self.inner() {
+            ValueData::Boolean(boolean) => Ok(*boolean),
+            _ => Err(ConversionError::InvalidType(format!(
+                "expecting ValueKind::Boolean. Got {:?}",
+                self.inner()
+            ))),
+        }
+    }
+
     pub fn array(&self) -> Result<&Vec<Value>, ConversionError> {
-        if let ValueKind::Array(array) = self.inner() {
+        if let ValueData::Array(array) = self.inner() {
             Ok(array)
         } else {
             Err(ConversionError::InvalidType(
@@ -87,7 +122,7 @@ impl Value {
 }
 
 impl Deref for Value {
-    type Target = ValueKind;
+    type Target = ValueData;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -100,8 +135,10 @@ impl std::fmt::Display for Value {
     }
 }
 
+#[derive(EnumDiscriminants)]
+#[strum_discriminants(name(ValueDataKind))]
 #[derive(Default, Clone, Debug)]
-pub enum ValueKind {
+pub enum ValueData {
     #[default]
     None,
     String(String),
@@ -109,22 +146,16 @@ pub enum ValueKind {
     Integer(u64),
     Boolean(bool),
     Array(Vec<Value>),
-    /*
-    Dynamic {
-        data: Option<Arc<DataType>>,
-        provider: Option<Arc<Mutex<DynProvider>>>,
-    },
-    */
 }
 
-impl std::fmt::Display for ValueKind {
+impl std::fmt::Display for ValueData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ValueKind::String(s) => f.write_str(s),
-            ValueKind::Float(num) => f.write_fmt(format_args!("{}f64", num)),
-            ValueKind::Integer(num) => f.write_fmt(format_args!("{}u64", num)),
-            ValueKind::Boolean(b) => f.write_fmt(format_args!("{}", b)),
-            ValueKind::Array(vec) => {
+            ValueData::String(s) => f.write_str(s),
+            ValueData::Float(num) => f.write_fmt(format_args!("{}f64", num)),
+            ValueData::Integer(num) => f.write_fmt(format_args!("{}u64", num)),
+            ValueData::Boolean(b) => f.write_fmt(format_args!("{}", b)),
+            ValueData::Array(vec) => {
                 f.write_char('[')?;
                 let mut iter = vec.iter().peekable();
                 while let Some(val) = iter.next() {
@@ -135,7 +166,7 @@ impl std::fmt::Display for ValueKind {
                 }
                 f.write_char(']')
             }
-            ValueKind::None => write!(f, "None"),
+            ValueData::None => write!(f, "None"),
         }
     }
 }
@@ -143,7 +174,7 @@ impl std::fmt::Display for ValueKind {
 impl Borrow<String> for Value {
     fn borrow(&self) -> &String {
         match &self.inner {
-            ValueKind::String(s) => s,
+            ValueData::String(s) => s,
             _ => panic!("Cannot borrow string for non-string typed value"),
         }
     }
@@ -152,7 +183,7 @@ impl Borrow<String> for Value {
 impl Borrow<str> for Value {
     fn borrow(&self) -> &str {
         match &self.inner {
-            ValueKind::String(s) => s,
+            ValueData::String(s) => s,
             _ => panic!("Cannot borrow string for non-string typed value"),
         }
     }
@@ -161,13 +192,13 @@ impl Borrow<str> for Value {
 impl<'a> Into<&'a String> for &'a Value {
     fn into(self) -> &'a String {
         match &self.inner {
-            ValueKind::String(s) => s,
+            ValueData::String(s) => s,
             _ => panic!("Cannot borrow string for non-string typed value"),
         }
     }
 }
 
-impl<'a> IntoFragment<'a> for &ValueKind {
+impl<'a> IntoFragment<'a> for &ValueData {
     fn into_fragment(self) -> iced::widget::text::Fragment<'a> {
         self.into()
     }
@@ -186,25 +217,15 @@ impl<'a> IntoFragment<'a> for &ValueKind {
 ///   - If the `DataProvider` is a `File` and its data is `Text`, returns the text data.
 ///   - Otherwise, it returns `"Unsupported DataProvider"` or `"Unknown DataType"`.
 ///
-impl<'a> Into<std::borrow::Cow<'a, str>> for &ValueKind {
+impl<'a> Into<std::borrow::Cow<'a, str>> for &ValueData {
     fn into(self) -> std::borrow::Cow<'a, str> {
         match self {
-            ValueKind::String(s) => s.clone().into(),
-            ValueKind::Float(n) => format!("{n}").into(),
-            ValueKind::Integer(n) => format!("{n}").into(),
-            ValueKind::Boolean(b) => format!("{b}").into(),
-
-            /*
-            ValueKind::Dynamic { data, .. } => match &*data {
-                Some(data) => match &**data {
-                    crate::data::DataType::Text(text) => text.clone().into(),
-                    _ => "Unknown DataType".into(),
-                },
-                None => format!("No Data Loaded").into(),
-            },
-            */
-            ValueKind::Array(_value) => todo!(),
-            ValueKind::None => format!("None").into(),
+            ValueData::String(s) => s.clone().into(),
+            ValueData::Float(n) => format!("{n}").into(),
+            ValueData::Integer(n) => format!("{n}").into(),
+            ValueData::Boolean(b) => format!("{b}").into(),
+            ValueData::Array(_value) => todo!(),
+            ValueData::None => format!("None").into(),
         }
     }
 }
@@ -214,6 +235,46 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &ValueKind {
 pub struct ValueParser;
 
 impl ValueParser {
+    fn parse_value(pair: Pair<Rule>) -> Result<Value, ParseError> {
+        let mut value = Value::default();
+
+        for pair in pair.into_inner() {
+            value = match pair.as_rule() {
+                Rule::string => Value::new_string(pair.into_inner().as_str().into()),
+                Rule::float => Value::new_float(pair.as_str().parse().map_err(ParseError::Float)?),
+                Rule::integer => {
+                    Value::new_integer(pair.as_str().parse().map_err(ParseError::Integer)?)
+                }
+                Rule::boolean => {
+                    Value::new_bool(pair.as_str().parse().map_err(ParseError::Boolean)?)
+                }
+                Rule::none => Value::default(),
+
+                Rule::array => {
+                    let mut values = Vec::new();
+                    for pair in pair.into_inner() {
+                        values.push(Self::parse_value(pair)?)
+                    }
+                    Value::new_array(values)
+                }
+
+                // Return the module when the EOI rule is emitted
+
+                // Handle unsupported rules
+                _ => {
+                    return Err(ParseError::UnsupportedRule(format!(
+                        "{}: {} {:?}",
+                        file!(),
+                        line!(),
+                        pair.as_rule()
+                    )));
+                }
+            };
+        }
+
+        Ok(value)
+    }
+
     pub fn parse_str(data: &str, context: &ParserContext) -> Result<Value, ParseError> {
         debug!("Parsing value {data}");
 
@@ -223,23 +284,9 @@ impl ValueParser {
 
         if let Some(root) = pairs.into_iter().last() {
             for pair in root.into_inner() {
-                value = match pair.as_rule() {
-                    Rule::string => Value::new_string(pair.into_inner().as_str().into()),
-                    Rule::float => {
-                        Value::new_float(pair.as_str().parse().map_err(ParseError::Float)?)
-                    }
-                    Rule::integer => {
-                        Value::new_integer(pair.as_str().parse().map_err(ParseError::Integer)?)
-                    }
-                    Rule::boolean => {
-                        Value::new_bool(pair.as_str().parse().map_err(ParseError::Boolean)?)
-                    }
-                    Rule::none => Value::default(),
-
-                    // Return the module when the EOI rule is emitted
+                match pair.as_rule() {
+                    Rule::values => value = Self::parse_value(pair)?,
                     Rule::EOI => return Ok(value.with_context(context.clone())),
-
-                    // Handle unsupported rules
                     _ => {
                         return Err(ParseError::UnsupportedRule(format!(
                             "{}: {} {:?}",
@@ -248,12 +295,100 @@ impl ValueParser {
                             pair.as_rule()
                         )));
                     }
-                };
+                }
             }
-        } else {
-            return Err(ParseError::Missing("root value pair"));
         }
 
+        // Ok path is early return inside the loop above on EOI event,
+        // if the loop returned, EOI was not emitted.
         Err(ParseError::Missing("EOI not emitted"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ValueParser;
+    use crate::parser::{value::ValueDataKind, ParserContext};
+    use approx::abs_diff_eq;
+
+    #[test]
+    fn string() {
+        let value = ValueParser::parse_str(r#""foo""#, &ParserContext::default()).unwrap();
+        assert!(value.is_kind(ValueDataKind::String));
+        assert_eq!(value.to_string(), "foo");
+    }
+
+    #[test]
+    fn float() {
+        let value = ValueParser::parse_str("3.14", &ParserContext::default()).unwrap();
+        assert!(value.is_kind(ValueDataKind::Float));
+        let float = value.float();
+        assert!(float.is_ok());
+        assert!(abs_diff_eq!(float.unwrap(), 3.14));
+
+        // Check negative
+        let value = ValueParser::parse_str("-3.14", &ParserContext::default()).unwrap();
+        assert!(value.is_kind(ValueDataKind::Float));
+        let float = value.float();
+        assert!(float.is_ok());
+        assert!(abs_diff_eq!(float.unwrap(), -3.14));
+
+        let value = ValueParser::parse_str("3.", &ParserContext::default()).unwrap();
+        assert!(value.is_kind(ValueDataKind::Float));
+        let float = value.float();
+        assert!(float.is_ok());
+        assert!(abs_diff_eq!(float.unwrap(), 3.0));
+
+        // Should be able to get a float from an integer type
+        let value = ValueParser::parse_str("3", &ParserContext::default()).unwrap();
+        assert!(value.is_kind(ValueDataKind::Integer));
+        let float = value.float();
+        assert!(float.is_ok());
+        assert!(abs_diff_eq!(float.unwrap(), 3.0));
+    }
+
+    #[test]
+    fn integer() {
+        let value = ValueParser::parse_str("3", &ParserContext::default()).unwrap();
+        assert!(value.is_kind(ValueDataKind::Integer));
+
+        let integer = value.integer();
+        assert!(integer.is_ok());
+        assert!(integer.unwrap() == 3);
+
+        let value = ValueParser::parse_str("3.0", &ParserContext::default()).unwrap();
+        let integer = value.integer();
+        assert!(integer.is_err());
+    }
+
+    #[test]
+    fn boolean() {
+        let value = ValueParser::parse_str("true", &ParserContext::default()).unwrap();
+        assert!(value.is_kind(ValueDataKind::Boolean));
+        let boolean = value.boolean();
+        assert!(boolean.is_ok());
+        assert!(boolean.unwrap() == true);
+
+        let value = ValueParser::parse_str("false", &ParserContext::default()).unwrap();
+        assert!(value.is_kind(ValueDataKind::Boolean));
+        let boolean = value.boolean();
+        assert!(boolean.is_ok());
+        assert!(boolean.unwrap() == false);
+    }
+
+    #[test]
+    fn array() {
+        let value = ValueParser::parse_str("[1,2,3]", &ParserContext::default()).unwrap();
+        assert!(value.is_kind(ValueDataKind::Array));
+
+        let array = value.array();
+        assert!(array.is_ok());
+
+        let array = array.unwrap();
+        assert_eq!(array.len(), 3);
+
+        assert_eq!(array[0].integer().unwrap(), 1);
+        assert_eq!(array[1].integer().unwrap(), 2);
+        assert_eq!(array[2].integer().unwrap(), 3);
     }
 }
