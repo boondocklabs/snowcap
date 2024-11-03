@@ -16,31 +16,54 @@ use crate::SyncError;
 
 mod hash;
 
+/// All possible [`Attribute`] inner values
 #[derive(Debug, Clone, EnumDiscriminants, PartialEq)]
 #[strum_discriminants(derive(EnumIter, Hash, PartialOrd, Ord))]
 #[strum_discriminants(name(AttributeKind))]
 pub enum AttributeValue {
+    /// Text Color sRGB color space
     TextColor(iced::Color),
+    /// Border which can be applied to styles
     Border(iced::Border),
+    /// Shadow which can be applied to styles
     Shadow(iced::Shadow),
+    /// Horizontal alignment
     HorizontalAlignment(iced::alignment::Horizontal),
+    /// Vertical alignment
     VerticalAlignment(iced::alignment::Vertical),
+    /// Padding. Can be all sides, top/bottom, left/right, or individually
     Padding(iced::Padding),
+    /// Width in units of [`iced::Length`]
     WidthLength(iced::Length),
+    /// Width in units of [`iced::Pixels`]
     WidthPixels(iced::Pixels),
+    /// Maximum width in [`iced::Pixels`]
     MaxWidth(iced::Pixels),
+    /// Height in units of [`iced::Length`]
     HeightLength(iced::Length),
+    /// Height in units of [`iced::Pixels`]
     HeightPixels(iced::Pixels),
+    /// Background of an element. Color or Gradient.
     Background(iced::Background),
+    /// Spacing between element
     Spacing(iced::Pixels),
+    /// Size in [`iced::Pixels`]
     Size(iced::Pixels),
+    /// QR Code Cell Size
     CellSize(iced::Pixels),
+    /// Clipping flag
     Clip(bool),
+    /// Toggled flag for toggle widget
     Toggled(bool),
+    /// Selected value for pick list widget
     Selected(String),
+    /// A label
     Label(String),
+    /// Built in [`iced::Theme`]
     Theme(iced::Theme),
+    /// Text wrapping
     Wrapping(iced::widget::text::Wrapping),
+    /// Text shaping
     Shaping(iced::widget::text::Shaping),
 }
 
@@ -58,7 +81,7 @@ impl std::fmt::Display for AttributeValue {
     }
 }
 
-/// A set of ['Attribute']. This is represented as a ['HashMap'] wrapped in an ['Arc'] and ['parking_lot::RwLock']
+/// A set of [`Attribute`] items. This is represented as a [`HashMap`] wrapped in an [`Arc`] and [`parking_lot::RwLock`]
 /// allowing the attributes to be cloned, and sent between threads
 #[derive(Default, Clone)]
 pub struct Attributes(Arc<RwLock<HashMap<AttributeKind, Attribute>>>);
@@ -235,6 +258,7 @@ impl IntoIterator for Attributes {
     }
 }
 
+/// An [`Iterator`] over [`Attribute`] items
 pub struct AttributeIter {
     guard: ArcRwLockReadGuard<RawRwLock, HashMap<AttributeKind, Attribute>>,
     iter: std::vec::IntoIter<AttributeKind>,

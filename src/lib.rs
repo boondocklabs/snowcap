@@ -32,7 +32,7 @@
 //! along the path. Node references where widgets are dropped are collected into a queue during this iteration pass, and new
 //! widgets are built from the queue (starting with leaves to build children first), and replaced in each [`SnowcapNode`].
 //!
-//! ## Modules
+//! ## Dynamic Modules
 //!
 //! There is a module framework in [`module`] which allows for creation of dynamic functionality that can be referenced in the snowcap markup.
 //! Modules can be defined in the markup as widget contents to provide their data from the network or a file, and they can subscribe to topics

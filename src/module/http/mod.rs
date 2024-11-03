@@ -1,3 +1,5 @@
+//! HTTP Request Module
+
 use super::{error::ModuleError, message::ModuleMessage, Module, ModuleEvent, ModuleInitData};
 use crate::module::argument::ModuleArguments;
 use crate::Value;

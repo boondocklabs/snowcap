@@ -1,5 +1,5 @@
-//! Hashing functions for iced types, which do not implement Hash
-//! Hash impl for AttributeValue
+//! Hashing functions for [`iced`] types which do not implement [`std::hash::Hash`]
+//! and impl of [`std::hash::Hash`] on [`AttributeValue`]
 
 use std::hash::{Hash, Hasher};
 
