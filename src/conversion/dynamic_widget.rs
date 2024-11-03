@@ -3,7 +3,7 @@ use arbutus::TreeNodeRef as _;
 use tracing::debug;
 use tracing::debug_span;
 
-use crate::tree_util::WidgetContent;
+use crate::cache::WidgetContent;
 use crate::{message::WidgetMessage, ConversionError, DynamicWidget, NodeId, NodeRef};
 
 use super::widget::SnowcapWidget;

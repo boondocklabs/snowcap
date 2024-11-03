@@ -1,3 +1,5 @@
+//! Tree Node containers for [`arbutus`] trees
+
 use colored::Colorize;
 use std::string::ToString;
 

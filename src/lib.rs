@@ -99,11 +99,11 @@ mod data;
 mod dynamic_widget;
 mod error;
 //mod event;
+mod cache;
 mod message;
 pub mod module;
 mod node;
 mod parser;
-mod tree_util;
 mod util;
 mod widget;
 
@@ -117,6 +117,7 @@ pub use iced;
 use iced::advanced::graphics::futures::MaybeSend;
 use iced::Task;
 
+use cache::WidgetCache;
 use message::Command;
 use message::Event;
 use message::MessageDiscriminants;
@@ -125,7 +126,6 @@ use module::manager::ModuleManager;
 use node::SnowcapNode;
 use parking_lot::Mutex;
 use tracing::warn;
-use tree_util::WidgetCache;
 
 use std::path::PathBuf;
 use std::sync::Arc;

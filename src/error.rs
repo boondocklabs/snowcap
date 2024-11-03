@@ -1,3 +1,5 @@
+//! Error types based on [`thiserror`]
+
 use std::cell::{BorrowError, BorrowMutError};
 use std::string::FromUtf8Error;
 

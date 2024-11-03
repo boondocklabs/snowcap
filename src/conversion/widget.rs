@@ -1,6 +1,6 @@
 use crate::attribute::{AttributeKind, AttributeValue};
+use crate::cache::WidgetContent;
 use crate::parser::value::ValueData;
-use crate::tree_util::WidgetContent;
 //use crate::util::ElementWrapper;
 use crate::NodeId;
 use iced::widget::Text;

@@ -1,3 +1,5 @@
+//! Messages for internal snowcap, module, and application communications
+
 use std::{hash::Hash, path::PathBuf};
 
 use iced::widget::markdown::Url;

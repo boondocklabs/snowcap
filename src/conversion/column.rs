@@ -2,10 +2,10 @@ use iced::widget::Column;
 
 use crate::{
     attribute::{AttributeValue, Attributes},
+    cache::WidgetContent,
     dynamic_widget::DynamicWidget,
     error::ConversionError,
     message::WidgetMessage,
-    tree_util::WidgetContent,
     NodeId,
 };
 

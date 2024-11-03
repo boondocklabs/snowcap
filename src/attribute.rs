@@ -1,4 +1,5 @@
-//! A set of utilities for managing and manipulating attributes in various forms.
+//! Widget Attributes, parsed from snowcap grammar using [`crate::parser::attribute::AttributeParser`]
+//! using Pest grammar [`src/parser/attribute.pest`](https://github.com/boondocklabs/snowcap/blob/main/src/parser/attribute.pest)
 
 use std::{
     collections::HashMap,

@@ -1,3 +1,5 @@
+//! In-tree widget cache and Tree widget updates
+
 use std::time::Instant;
 
 use arbutus::{TreeNode, TreeNodeRef as _};
@@ -381,7 +383,7 @@ impl WidgetCache {
 mod tests {
     use tracing_test::traced_test;
 
-    use crate::{module::manager::ModuleManager, tree_util::WidgetCache, Message, SnowcapParser};
+    use crate::{cache::WidgetCache, module::manager::ModuleManager, Message, SnowcapParser};
 
     #[traced_test]
     #[test]
