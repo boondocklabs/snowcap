@@ -1,3 +1,5 @@
+//! Dynamic dispatched Widget container, enabling long lifetime references and widget reuse
+
 use std::{sync::Arc, time::Duration};
 
 use colored::Colorize as _;
