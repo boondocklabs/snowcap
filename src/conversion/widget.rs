@@ -292,6 +292,9 @@ impl SnowcapWidget {
                             AttributeValue::WidthLength(width) => scroll.width(width),
                             AttributeValue::WidthPixels(width) => scroll.width(width),
                             AttributeValue::Spacing(spacing) => scroll.spacing(spacing),
+                            AttributeValue::ScrollDirection(direction) => {
+                                scroll.direction(direction)
+                            }
                             _ => todo!(),
                         };
                     }

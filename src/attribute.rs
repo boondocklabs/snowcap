@@ -46,7 +46,7 @@ pub enum AttributeValue {
     HeightPixels(iced::Pixels),
     /// Background of an element. Color or Gradient.
     Background(iced::Background),
-    /// Spacing between element
+    /// Spacing between elements
     Spacing(iced::Pixels),
     /// Size in [`iced::Pixels`]
     Size(iced::Pixels),
