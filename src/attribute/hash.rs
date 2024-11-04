@@ -81,6 +81,12 @@ fn hash_background<H: Hasher>(background: &iced::Background, state: &mut H) {
     }
 }
 
+fn hash_direction<H: Hasher>(direction: &iced::widget::scrollable::Direction, state: &mut H) {
+    std::mem::discriminant(direction).hash(state);
+
+    // TODO: Hash the scrollbars
+}
+
 fn hash_theme<H: Hasher>(theme: &iced::Theme, state: &mut H) {
     std::mem::discriminant(theme).hash(state);
 
@@ -119,6 +125,7 @@ impl std::hash::Hash for AttributeValue {
             AttributeValue::Wrapping(wrapping) => wrapping.hash(state),
             AttributeValue::Shaping(shaping) => shaping.hash(state),
             AttributeValue::SliderValue(value) => value.hash(state),
+            AttributeValue::ScrollDirection(direction) => hash_direction(direction, state),
         }
     }
 }

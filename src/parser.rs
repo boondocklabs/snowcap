@@ -385,14 +385,14 @@ where
 
                         widget.child(node, |_| Ok(()))?;
                     }
-                    Rule::widget => {
-                        self.parse_pair(pair, widget)?;
-                    }
                     Rule::container => {
                         self.parse_container(pair, widget)?;
                     }
                     Rule::module => {
                         self.parse_module(pair, widget)?;
+                    }
+                    Rule::widget | Rule::row | Rule::column | Rule::stack => {
+                        self.parse_pair(pair, widget)?;
                     }
                     _ => {
                         return Err(ParseError::UnsupportedRule(format!(

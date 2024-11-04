@@ -1,3 +1,4 @@
+use iced::widget::scrollable::Scrollbar;
 use pest::{
     iterators::{Pair, Pairs},
     Parser,
@@ -220,6 +221,27 @@ impl AttributeParser {
         }
     }
 
+    fn parse_direction(
+        pair: Pair<'_, Rule>,
+    ) -> Result<iced::widget::scrollable::Direction, ParseError> {
+        match pair.as_rule() {
+            Rule::direction_horizontal => Ok(iced::widget::scrollable::Direction::Horizontal(
+                Scrollbar::default(),
+            )),
+            Rule::direction_vertical => Ok(iced::widget::scrollable::Direction::Vertical(
+                Scrollbar::default(),
+            )),
+            Rule::both => Ok(iced::widget::scrollable::Direction::Both {
+                vertical: Scrollbar::default(),
+                horizontal: Scrollbar::default(),
+            }),
+            _ => Err(ParseError::UnsupportedRule(format!(
+                "parse_shaping() expecting basic | advanced. Got {:#?}",
+                pair.as_rule()
+            ))),
+        }
+    }
+
     fn parse_radius(pair: Pair<'_, Rule>) -> Result<iced::border::Radius, ParseError> {
         match pair.as_rule() {
             Rule::uniform => {
@@ -389,6 +411,9 @@ impl AttributeParser {
             Rule::attr_shaping => Ok(Some(AttributeValue::Shaping(Self::parse_shaping(
                 pair.into_inner().last().unwrap(),
             )?))),
+            Rule::attr_direction => Ok(Some(AttributeValue::ScrollDirection(
+                Self::parse_direction(pair.into_inner().last().unwrap())?,
+            ))),
             Rule::EOI => Ok(None),
             _ => Err(ParseError::UnsupportedRule(format!(
                 "In parse_attribute rule={:?}",
@@ -463,7 +488,10 @@ impl AttributeParser {
 #[cfg(test)]
 mod tests {
     use iced::{
-        widget::text::{Shaping, Wrapping},
+        widget::{
+            scrollable::{Direction, Scrollbar},
+            text::{Shaping, Wrapping},
+        },
         Padding,
     };
     use tracing::info;
@@ -676,6 +704,46 @@ mod tests {
                 info!("{:#?}", border);
             }
             _ => panic!("Border AttributeValue not found"),
+        }
+    }
+
+    #[traced_test]
+    #[test]
+    fn test_direction() {
+        let attrs = AttributeParser::parse_attributes("direction: horizontal").unwrap();
+        let attr = attrs.get(AttributeKind::ScrollDirection).unwrap().unwrap();
+
+        match attr {
+            AttributeValue::ScrollDirection(direction) => {
+                assert!(direction == Direction::Horizontal(Scrollbar::default()))
+            }
+            _ => panic!("ScrollDirection AttributeValue not found"),
+        }
+
+        let attrs = AttributeParser::parse_attributes("direction: vertical").unwrap();
+        let attr = attrs.get(AttributeKind::ScrollDirection).unwrap().unwrap();
+
+        match attr {
+            AttributeValue::ScrollDirection(direction) => {
+                assert!(direction == Direction::Vertical(Scrollbar::default()))
+            }
+            _ => panic!("ScrollDirection AttributeValue not found"),
+        }
+
+        let attrs = AttributeParser::parse_attributes("direction: both").unwrap();
+        let attr = attrs.get(AttributeKind::ScrollDirection).unwrap().unwrap();
+
+        match attr {
+            AttributeValue::ScrollDirection(direction) => {
+                assert!(
+                    direction
+                        == Direction::Both {
+                            vertical: Scrollbar::default(),
+                            horizontal: Scrollbar::default()
+                        }
+                )
+            }
+            _ => panic!("ScrollDirection AttributeValue not found"),
         }
     }
 }

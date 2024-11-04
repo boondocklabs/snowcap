@@ -3,7 +3,9 @@ use crate::cache::WidgetContent;
 use crate::util::ElementWrapper;
 //use crate::util::ElementWrapper;
 use crate::NodeId;
-use iced::widget::{Button, PickList, Rule, Slider, Space, Themer, Toggler, VerticalSlider};
+use iced::widget::{
+    Button, PickList, Rule, Scrollable, Slider, Space, Themer, Toggler, VerticalSlider,
+};
 use iced::widget::{Image, Svg, Text};
 use tracing::warn;
 
@@ -170,9 +172,20 @@ impl SnowcapWidget {
             }
 
             "button" => {
-                let button = Button::new(content).on_press_with(move || {
-                    M::from((node_id, WidgetMessage::Button(element_id.clone())))
+                let mut button = Button::new(content).on_press_with(move || {
+                    M::from((node_id, WidgetMessage::ButtonPress(element_id.clone())))
                 });
+
+                for attr in attrs {
+                    button = match *attr {
+                        AttributeValue::HeightLength(height) => button.height(height),
+                        AttributeValue::HeightPixels(height) => button.height(height),
+                        AttributeValue::WidthLength(width) => button.width(width),
+                        AttributeValue::WidthPixels(width) => button.width(width),
+                        AttributeValue::Padding(padding) => button.padding(padding),
+                        _ => button,
+                    }
+                }
 
                 Ok(DynamicWidget::default().with_widget(button))
             }
@@ -188,18 +201,32 @@ impl SnowcapWidget {
                     0
                 };
 
+                let _element_id = element_id.clone();
                 let _attrs = attrs.clone();
-                let slider = Slider::<i32, M>::new(0..=32768, value, move |val| {
+                let mut slider = Slider::<i32, M>::new(0..=32768, value, move |val| {
                     _attrs.set(AttributeValue::SliderValue(val)).unwrap();
 
                     M::from((
                         node_id,
-                        WidgetMessage::Slider {
-                            id: element_id.clone(),
+                        WidgetMessage::SliderChanged {
+                            element_id: _element_id.clone(),
                             value: val,
                         },
                     ))
-                });
+                })
+                .on_release(M::from((
+                    node_id,
+                    WidgetMessage::SliderReleased { element_id, value },
+                )));
+
+                for attr in attrs {
+                    slider = match *attr {
+                        AttributeValue::HeightPixels(height) => slider.height(height),
+                        AttributeValue::WidthLength(width) => slider.width(width),
+                        AttributeValue::WidthPixels(width) => slider.width(width),
+                        _ => slider,
+                    }
+                }
 
                 Ok(DynamicWidget::default().with_widget(slider))
             }
@@ -213,20 +240,68 @@ impl SnowcapWidget {
                     0
                 };
 
+                let _element_id = element_id.clone();
                 let _attrs = attrs.clone();
-                let slider = VerticalSlider::<i32, M>::new(0..=32768, value, move |val| {
+                let mut slider = VerticalSlider::<i32, M>::new(0..=32768, value, move |val| {
                     _attrs.set(AttributeValue::SliderValue(val)).unwrap();
 
                     M::from((
                         node_id,
-                        WidgetMessage::Slider {
-                            id: element_id.clone(),
+                        WidgetMessage::SliderChanged {
+                            element_id: _element_id.clone(),
                             value: val,
                         },
                     ))
-                });
+                })
+                .on_release(M::from((
+                    node_id,
+                    WidgetMessage::SliderReleased { element_id, value },
+                )));
+
+                for attr in attrs {
+                    slider = match *attr {
+                        AttributeValue::HeightLength(height) => slider.height(height),
+                        AttributeValue::HeightPixels(height) => slider.height(height),
+                        AttributeValue::WidthPixels(width) => slider.width(width),
+                        _ => slider,
+                    }
+                }
 
                 Ok(DynamicWidget::default().with_widget(slider))
+            }
+
+            "scrollable" => {
+                if let WidgetContent::Widget(widget) = content {
+                    let mut scroll = Scrollable::new(widget.into_element().unwrap()).on_scroll(
+                        move |viewport| {
+                            println!("ON SCROLL {viewport:?}");
+                            M::from((
+                                node_id,
+                                WidgetMessage::Scrolled {
+                                    element_id: element_id.clone(),
+                                    viewport,
+                                },
+                            ))
+                        },
+                    );
+
+                    for attr in attrs {
+                        scroll = match (*attr).clone() {
+                            AttributeValue::HeightLength(height) => scroll.height(height),
+                            AttributeValue::HeightPixels(height) => scroll.height(height),
+                            AttributeValue::WidthLength(width) => scroll.width(width),
+                            AttributeValue::WidthPixels(width) => scroll.width(width),
+                            AttributeValue::Spacing(spacing) => scroll.spacing(spacing),
+                            _ => todo!(),
+                        };
+                    }
+
+                    Ok(DynamicWidget::default().with_widget(scroll))
+                } else {
+                    Err(ConversionError::Missing(
+                        "Scrollable expecting WidgetContent::Widget".into(),
+                    ))
+                }
             }
 
             "toggler" => {
@@ -244,7 +319,7 @@ impl SnowcapWidget {
                     M::from((
                         node_id,
                         WidgetMessage::Toggler {
-                            id: element_id.clone(),
+                            element_id: element_id.clone(),
                             toggled,
                         },
                     ))
@@ -301,7 +376,7 @@ impl SnowcapWidget {
                         M::from((
                             node_id,
                             WidgetMessage::PickListSelected {
-                                id: element_id.clone(),
+                                element_id: element_id.clone(),
                                 selected,
                             },
                         ))

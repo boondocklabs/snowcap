@@ -19,12 +19,15 @@ boolean = { true | false }
 true    = { ^"true" }
 false   = { ^"false" }
 
-glyph    = { ^"glyph" }
-word     = { ^"word" }
-none     = { ^"none" }
-either   = { ^"either" | ^"both" }
-basic    = { ^"basic" }
-advanced = { ^"advanced" }
+glyph                = { ^"glyph" }
+word                 = { ^"word" }
+none                 = { ^"none" }
+either               = { ^"either" | ^"both" }
+basic                = { ^"basic" }
+advanced             = { ^"advanced" }
+direction_horizontal = { ^"horizontal" }
+direction_vertical   = { ^"vertical" }
+both                 = { ^"both" }
 
 attributes = _{
     attr_padding
@@ -49,6 +52,7 @@ attributes = _{
   | attr_toggled
   | attr_wrapping
   | attr_shaping
+  | attr_direction
 }
 
 attr_padding = { ^"padding" ~ ":" ~ (full | edge | uniform | padding_option_list) }
@@ -71,9 +75,9 @@ attr_clip       = { (^"clip") ~ ":" ~ boolean }
 attr_toggled    = { (^"toggled") ~ ":" ~ boolean }
 attr_wrapping   = { (^"wrapping") ~ ":" ~ (glyph | word | none | either) }
 attr_shaping    = { (^"shaping") ~ ":" ~ (basic | advanced) }
-
-attr_border = { (^"border") ~ ":" ~ border_option_list }
-attr_shadow = { (^"shadow") ~ ":" ~ shadow_option_list }
+attr_border     = { (^"border") ~ ":" ~ border_option_list }
+attr_shadow     = { (^"shadow") ~ ":" ~ shadow_option_list }
+attr_direction  = { (^"direction") ~ ":" ~ (direction_horizontal | direction_vertical | both) }
 
 padding_option_list = _{ padding_option ~ ("," ~ padding_option)* }
 padding_option      = _{ option_top | option_bottom | option_left | option_right }

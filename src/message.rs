@@ -2,7 +2,7 @@
 
 use std::{hash::Hash, path::PathBuf};
 
-use iced::widget::markdown::Url;
+use iced::widget::{markdown::Url, scrollable::Viewport};
 use strum::{EnumDiscriminants, EnumIter};
 
 use crate::{module::message::ModuleMessageContainer, parser::ElementId, NodeId};
@@ -37,30 +37,38 @@ pub enum Message<AppMessage> {
 
 #[derive(Debug, Clone)]
 pub enum WidgetMessage {
-    /// A message variant for handling markdown-related events.
-    ///
-    /// This is used when an event related to markdown content
-    /// occurs within the application.
+    /// Markdown widget clicked URL
     Markdown(Url),
 
     /// A variant for handling button events.
-    Button(Option<ElementId>),
+    ButtonPress(Option<ElementId>),
 
     /// A message variant for handling toggler events.
     Toggler {
-        id: Option<ElementId>,
+        element_id: Option<ElementId>,
         toggled: bool,
     },
 
     /// A pick list was selected
     PickListSelected {
-        id: Option<ElementId>,
+        element_id: Option<ElementId>,
         selected: String,
     },
 
-    Slider {
-        id: Option<ElementId>,
+    /// Slider value changed
+    SliderChanged {
+        element_id: Option<ElementId>,
         value: i32,
+    },
+
+    SliderReleased {
+        element_id: Option<ElementId>,
+        value: i32,
+    },
+
+    Scrolled {
+        element_id: Option<ElementId>,
+        viewport: Viewport,
     },
 }
 

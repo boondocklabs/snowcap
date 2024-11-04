@@ -68,6 +68,8 @@ pub enum AttributeValue {
     Shaping(iced::widget::text::Shaping),
     /// Slider Value
     SliderValue(i32),
+    /// Scroll Direction
+    ScrollDirection(iced::widget::scrollable::Direction),
 }
 
 impl AttributeValue {

@@ -125,6 +125,7 @@ use module::manager::ModuleManager;
 use module::message::ModuleMessage;
 use node::SnowcapNode;
 use parking_lot::Mutex;
+use tracing::info_span;
 use tracing::warn;
 
 use std::path::PathBuf;
@@ -446,35 +447,59 @@ where
         node_id: &NodeId,
         message: &mut WidgetMessage,
     ) -> Task<Message<AppMessage>> {
-        info!("Widget Message NodeId: {node_id}");
+        info_span!("widget-message").in_scope(|| {
+            info!("Widget Message NodeId: {node_id}");
 
-        if let Some(node) = self.tree.lock().as_mut().unwrap().get_node_mut(node_id) {
-            node.node_mut().data_mut().set_dirty(true);
-        }
-
-        match message {
-            WidgetMessage::Markdown(url) => {
-                info!("Markdown URL click {url}");
-                Task::none()
-            }
-            WidgetMessage::Button(id) => {
-                info!("Button clicked node={id:?}");
-                Task::none()
-            }
-            WidgetMessage::Toggler { id, toggled } => {
-                info!("Toggler node={id:?} toggled={toggled}");
-                Task::none()
-            }
-            WidgetMessage::PickListSelected { id, selected } => {
-                info!("Picklist selected node={id:?} selected={selected}");
-                Task::none()
+            if let Some(node) = self.tree.lock().as_mut().unwrap().get_node_mut(node_id) {
+                node.node_mut().data_mut().set_dirty(true);
             }
 
-            WidgetMessage::Slider { id, value } => {
-                println!("Slider changed node_id={node_id:?} element_id={id:?} value={value}");
-                Task::none()
+            match message {
+                WidgetMessage::Markdown(url) => {
+                    info!("Markdown URL click {url}");
+                    Task::none()
+                }
+                WidgetMessage::ButtonPress(id) => {
+                    info!("Button pressed node={id:?}");
+                    Task::none()
+                }
+                WidgetMessage::Toggler {
+                    element_id: id,
+                    toggled,
+                } => {
+                    info!("Toggler node={id:?} toggled={toggled}");
+                    Task::none()
+                }
+                WidgetMessage::PickListSelected {
+                    element_id: id,
+                    selected,
+                } => {
+                    info!("Picklist selected node={id:?} selected={selected}");
+                    Task::none()
+                }
+
+                WidgetMessage::SliderChanged {
+                    element_id: id,
+                    value,
+                } => {
+                    info!("Slider changed node_id={node_id} element_id={id:?} value={value}");
+                    Task::none()
+                }
+
+                WidgetMessage::SliderReleased { element_id, value } => {
+                    info!(
+                    "Slider released node_id={node_id} element_id={element_id:?} value={value}"
+                    );
+
+                    Task::none()
+                }
+
+                WidgetMessage::Scrolled { element_id, viewport } => {
+                    info!("Scrolled node_id={node_id} element_id={element_id:?} viewport={viewport:?}");
+                    Task::none()
+                }
             }
-        }
+        })
     }
 
     fn handle_event(&mut self, event: Event) -> Task<Message<AppMessage>> {
