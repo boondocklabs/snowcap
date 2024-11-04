@@ -179,9 +179,11 @@ where
                     id = Some(container_id.to_string());
                 }
                 Rule::row | Rule::column | Rule::widget | Rule::stack => {
-                    let node = SnowcapNode::new(Content::Container)
-                        .with_element_id(id)
-                        .with_attrs(attrs);
+                    let mut node = SnowcapNode::new(Content::Container).with_element_id(id);
+
+                    if let Some(attrs) = attrs {
+                        node = node.with_attrs(attrs);
+                    }
 
                     builder.child(node, |container| {
                         self.parse_pair(pair, container)?;
@@ -265,7 +267,9 @@ where
             row.node_mut()
                 .with_data_mut(|data| {
                     data.element_id = id;
-                    data.attrs = attrs;
+                    if let Some(attrs) = attrs {
+                        data.attrs = attrs;
+                    }
                     Ok::<(), ()>(())
                 })
                 .ok();
@@ -293,7 +297,9 @@ where
             col.node_mut()
                 .with_data_mut(|data| {
                     data.element_id = id;
-                    data.attrs = attrs;
+                    if let Some(attrs) = attrs {
+                        data.attrs = attrs;
+                    }
                     Ok::<(), ()>(())
                 })
                 .ok();
@@ -322,7 +328,9 @@ where
                 .node_mut()
                 .with_data_mut(|data| {
                     data.element_id = id;
-                    data.attrs = attrs;
+                    if let Some(attrs) = attrs {
+                        data.attrs = attrs;
+                    }
                     Ok::<(), ()>(())
                 })
                 .ok();
@@ -366,7 +374,7 @@ where
                         widget
                             .node_mut()
                             .with_data_mut(|data| {
-                                data.attrs = Some(attrs);
+                                data.attrs = attrs;
                                 Ok::<(), ()>(())
                             })
                             .ok();

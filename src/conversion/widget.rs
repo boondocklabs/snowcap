@@ -3,7 +3,7 @@ use crate::cache::WidgetContent;
 use crate::util::ElementWrapper;
 //use crate::util::ElementWrapper;
 use crate::NodeId;
-use iced::widget::{Button, PickList, Rule, Space, Themer, Toggler};
+use iced::widget::{Button, PickList, Rule, Slider, Space, Themer, Toggler};
 use iced::widget::{Image, Svg, Text};
 use tracing::warn;
 
@@ -179,9 +179,34 @@ impl SnowcapWidget {
             "rule-horizontal" => Ok(DynamicWidget::default().with_widget(Rule::horizontal(1))),
             "rule-vertical" => Ok(DynamicWidget::default().with_widget(Rule::vertical(1))),
 
+            "slider" => {
+                let value = if let Some(AttributeValue::SliderValue(value)) =
+                    attrs.get(AttributeKind::SliderValue)?
+                {
+                    value
+                } else {
+                    0
+                };
+
+                let _attrs = attrs.clone();
+                let slider = Slider::<i32, M>::new(0..=32768, value, move |val| {
+                    _attrs.set(AttributeValue::SliderValue(val)).unwrap();
+
+                    M::from((
+                        node_id,
+                        WidgetMessage::Slider {
+                            id: element_id.clone(),
+                            value: val,
+                        },
+                    ))
+                });
+
+                Ok(DynamicWidget::default().with_widget(slider))
+            }
+
             "toggler" => {
                 let is_toggled: bool = if let Some(AttributeValue::Toggled(toggled)) =
-                    attrs.clone().get(AttributeKind::Toggled)?
+                    attrs.get(AttributeKind::Toggled)?
                 {
                     toggled
                 } else {

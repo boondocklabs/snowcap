@@ -66,6 +66,8 @@ pub enum AttributeValue {
     Wrapping(iced::widget::text::Wrapping),
     /// Text shaping
     Shaping(iced::widget::text::Shaping),
+    /// Slider Value
+    SliderValue(i32),
 }
 
 impl AttributeValue {

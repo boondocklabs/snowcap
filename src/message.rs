@@ -57,6 +57,11 @@ pub enum WidgetMessage {
         id: Option<ElementId>,
         selected: String,
     },
+
+    Slider {
+        id: Option<ElementId>,
+        value: i32,
+    },
 }
 
 impl<AppMessage> Default for Message<AppMessage> {

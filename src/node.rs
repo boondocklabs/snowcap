@@ -66,7 +66,7 @@ where
     M: 'static,
 {
     pub element_id: Option<String>,
-    pub attrs: Option<Attributes>,
+    pub attrs: Attributes,
     content: Content,
     pub widget: Option<DynamicWidget<M>>,
     state: State,
@@ -97,8 +97,8 @@ impl<M> std::hash::Hash for SnowcapNode<M> {
 
 impl<M> std::fmt::Display for SnowcapNode<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let attr_display = if let Some(attrs) = &self.attrs {
-            format!("{:?}", attrs)
+        let attr_display = if self.attrs.len() > 0 {
+            format!("{:?}", self.attrs)
         } else {
             "".into()
         };
@@ -117,7 +117,7 @@ impl<M> Default for SnowcapNode<M> {
         Self {
             content: Content::default(),
             element_id: None,
-            attrs: None,
+            attrs: Attributes::default(),
             widget: None,
             state: State::New,
             module_data: None,
@@ -155,7 +155,7 @@ impl<M> SnowcapNode<M> {
     }
 
     /// Add attributes to this node
-    pub fn with_attrs(mut self, attrs: Option<Attributes>) -> Self {
+    pub fn with_attrs(mut self, attrs: Attributes) -> Self {
         self.attrs = attrs;
         self
     }

@@ -118,6 +118,7 @@ impl std::hash::Hash for AttributeValue {
             AttributeValue::Theme(theme) => hash_theme(theme, state),
             AttributeValue::Wrapping(wrapping) => wrapping.hash(state),
             AttributeValue::Shaping(shaping) => shaping.hash(state),
+            AttributeValue::SliderValue(value) => value.hash(state),
         }
     }
 }

@@ -469,6 +469,11 @@ where
                 info!("Picklist selected node={id:?} selected={selected}");
                 Task::none()
             }
+
+            WidgetMessage::Slider { id, value } => {
+                println!("Slider changed node_id={node_id:?} element_id={id:?} value={value}");
+                Task::none()
+            }
         }
     }
 

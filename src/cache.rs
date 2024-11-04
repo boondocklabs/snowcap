@@ -371,7 +371,7 @@ impl WidgetCache {
                 let node = noderef.try_node()?;
                 let data = node.data();
                 let node_id = node.id();
-                let attrs = data.attrs.clone().unwrap_or(Attributes::default());
+                let attrs = data.attrs.clone();
 
                 if data.widget.is_some() {
                     // Already have a widget for this node, continue down the tree
