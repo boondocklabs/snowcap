@@ -3,6 +3,7 @@
 use std::time::Instant;
 
 use arbutus::{TreeNode, TreeNodeRef as _};
+use colored::Colorize as _;
 use iced::{advanced::graphics::futures::MaybeSend, Element, Task};
 use tracing::{debug, debug_span};
 
@@ -14,8 +15,9 @@ use crate::{
     },
     dynamic_widget::DynamicWidget,
     message::{Event, WidgetMessage},
-    module::{manager::ModuleManager, message::ModuleMessageContainer},
+    module::{data::ModuleData, manager::ModuleManager, message::ModuleMessageContainer},
     node::{Content, SnowcapNode, State},
+    parser::module::Module,
     ConversionError, IndexedTree, NodeId, NodeRef, Value,
 };
 
@@ -26,6 +28,10 @@ pub enum WidgetContent<M> {
     Widget(DynamicWidget<M>),
     Value(Value),
     List(Vec<Self>),
+    Module(Module),
+    Text(String),
+    Image(iced::widget::image::Handle),
+    Svg(iced::widget::svg::Handle),
 }
 
 impl<M> std::fmt::Display for WidgetContent<M>
@@ -43,6 +49,29 @@ where
                     write!(f, "{:?},", w)?;
                 }
                 write!(f, "]")
+            }
+            WidgetContent::Module(module) => write!(f, "{module}"),
+            WidgetContent::Image(_) => write!(f, "Image Handle"),
+            WidgetContent::Svg(_) => write!(f, "SVG Handle"),
+            WidgetContent::Text(_) => write!(f, "Text Content"),
+            //WidgetContent::Markdown(_) => write!(f, "Markdown Items"),
+        }
+    }
+}
+
+/// Conversion of a reference to a boxed dyn [`ModuleData`] into [`WidgetContent`]
+impl<M> From<&Box<dyn ModuleData>> for WidgetContent<M> {
+    fn from(data: &Box<dyn ModuleData>) -> Self {
+        match data.kind() {
+            crate::module::data::ModuleDataKind::Unknown => todo!(),
+            crate::module::data::ModuleDataKind::Image => WidgetContent::Image(
+                iced::widget::image::Handle::from_bytes(data.bytes().unwrap().clone()),
+            ),
+            crate::module::data::ModuleDataKind::Svg => WidgetContent::Svg(
+                iced::widget::svg::Handle::from_memory(data.bytes().unwrap().clone()),
+            ),
+            crate::module::data::ModuleDataKind::Text => {
+                WidgetContent::Text(String::from_utf8(data.bytes().unwrap().clone()).unwrap())
             }
         }
     }
@@ -135,34 +164,24 @@ impl WidgetCache {
 
             match node.data().get_state() {
                 State::New => {
-                    if let Content::Module(module) = node.data().content() {
-                        let task = modules
-                            .instantiate(module.name(), module.args().clone())?
-                            .map(|m| M::from(m));
+                    // Check if this node is a Module, and instantiate the module
+                    if let Content::Module(module) = node.data_mut().content_mut() {
+                        // Instantate the module, and get its handle_id and init task
+                        let (handle_id, task) =
+                            modules.instantiate(module.name(), module.args().clone())?;
+
+                        // Set the Handle ID of the instantiated module into the tree node
+                        module.set_handle_id(handle_id);
+
+                        // Set the node ID associated with this module instance in the [`ModuleManager`]
+                        modules.set_module_node(handle_id, node.id());
+
+                        let task = task.map(|m| M::from(m));
+
+                        // Push the update task from the module to the set of tasks to run
+                        // after this update pass has completed.
                         tasks.push(task);
-
-                        /*
-                        match ModuleManager::from_string(module.name()) {
-                            Ok(kind) => {
-                                println!("Kind: {kind}");
-
-                                let handle_id = modules.internal(kind);
-                                let task = modules.start(handle_id, module.args());
-                                tasks.push(task.map(|m| M::from(m)));
-                            }
-                            Err(_e) => todo!(),
-                        }
-                        */
                     }
-
-                    /*
-                    // Check if this node is attached to a provider, and get the init task
-                    if let Content::Value(value) = node.data().content() {
-                        if let Some(task) = Self::handle_provider::<M>(node.id(), value) {
-                            tasks.push(task)
-                        }
-                    }
-                    */
 
                     drop(node);
                     update_queue.push(noderef.clone());
@@ -219,15 +238,16 @@ impl WidgetCache {
 
     /// Get [`WidgetContent`] for a node from a Vec of [`DynamicWidget`] of the children
     fn widget_content<M>(
-        node: &NodeRef<M>,
+        noderef: &NodeRef<M>,
         child_widgets: Option<Vec<DynamicWidget<M>>>,
     ) -> WidgetContent<M>
     where
         M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + From<Event> + 'static,
     {
-        let node = node.node();
+        let node = noderef.node();
 
         let content = if let Some(mut children) = child_widgets {
+            // Theis node has children with widgets
             if children.len() == 1 {
                 WidgetContent::Widget(children.pop().unwrap())
             } else {
@@ -239,14 +259,24 @@ impl WidgetCache {
                 )
             }
         } else {
+            // This node does not have childlren with widgets. Could be a Module or a Value
             if node.num_children() == 1 {
                 let child = node.children().unwrap().iter().last().unwrap();
 
-                if let Content::Value(value) = child.node().data().content() {
-                    WidgetContent::Value(value.clone())
-                } else {
-                    WidgetContent::None
+                match child.node().data().content() {
+                    Content::Value(value) => WidgetContent::Value(value.clone()),
+                    Content::Module(module) => {
+                        if let Some(data) = child.node().data().module_data() {
+                            WidgetContent::from(&**data)
+                        } else {
+                            WidgetContent::Module(module.clone())
+                        }
+                    }
+                    _ => WidgetContent::None,
                 }
+            } else if node.num_children() > 1 {
+                println!("{}\n{noderef}", "At Node".red());
+                panic!("More than one child node for a node with data content");
             } else {
                 WidgetContent::None
             }
@@ -308,10 +338,7 @@ impl WidgetCache {
                     panic!("No widget in root");
                 }
             }
-            Content::Module(_module) => {
-                //println!("Module! {module:#?}");
-                None
-            }
+            Content::Module(_module) => None,
             Content::Value(_value) => None,
             Content::None => None,
         };

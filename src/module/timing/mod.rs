@@ -7,10 +7,23 @@ use tracing::{debug, error};
 use crate::{module::argument::ModuleArguments, NodeRef};
 
 use super::{
+    data::ModuleData,
     error::ModuleError,
     message::{ModuleMessage, Topic, TopicMessage},
     Module, ModuleEvent, ModuleInitData,
 };
+
+#[derive(Debug)]
+pub struct TimingData;
+impl ModuleData for TimingData {
+    fn kind(&self) -> super::data::ModuleDataKind {
+        todo!()
+    }
+
+    fn bytes(&self) -> Result<&Vec<u8>, ModuleError> {
+        todo!()
+    }
+}
 
 #[derive(Debug)]
 pub enum TimingEvent {
@@ -26,6 +39,8 @@ pub struct TimingModule {}
 #[async_trait]
 impl Module for TimingModule {
     type Event = TimingEvent;
+    type Data = TimingData;
+
     async fn init(
         &mut self,
         args: ModuleArguments,

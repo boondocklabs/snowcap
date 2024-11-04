@@ -62,19 +62,22 @@ where
     type Error = crate::SyncError;
 
     fn try_into(self) -> Result<Element<'static, M>, Self::Error> {
-        let lock = self.widget.unwrap();
-        let guard = lock
-            .try_write_arc_for(Duration::from_secs(1))
-            .ok_or(SyncError::Deadlock(format!(
-                "DynamicWidget already locked. Node {:?}",
-                self.node_id
-            )))?;
-        let widget_ref = WidgetRef {
-            widget: guard,
-            node_id: self.node_id.unwrap(),
-        };
-        //debug!("New WidgetRef node {:?}", self.node_id);
-        Ok(Element::new(widget_ref))
+        if let Some(lock) = self.widget {
+            let guard =
+                lock.try_write_arc_for(Duration::from_secs(1))
+                    .ok_or(SyncError::Deadlock(format!(
+                        "DynamicWidget already locked. Node {:?}",
+                        self.node_id
+                    )))?;
+            let widget_ref = WidgetRef {
+                widget: guard,
+                node_id: self.node_id.unwrap(),
+            };
+            //debug!("New WidgetRef node {:?}", self.node_id);
+            Ok(Element::new(widget_ref))
+        } else {
+            panic!("Widget is uninitialized. {self:#?}")
+        }
     }
 }
 

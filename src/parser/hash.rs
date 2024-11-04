@@ -1,7 +1,7 @@
 use super::{Value, ValueData};
-use crate::data::DataType;
-use tracing::warn;
+//use crate::data::DataType;
 
+/*
 impl std::hash::Hash for DataType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
@@ -24,6 +24,7 @@ impl std::hash::Hash for DataType {
         }
     }
 }
+*/
 
 impl std::hash::Hash for ValueData {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {

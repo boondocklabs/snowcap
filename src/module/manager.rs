@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use iced::Task;
 use tracing::{debug, error, warn};
 
-use crate::module::argument::ModuleArguments;
+use crate::{module::argument::ModuleArguments, NodeId};
 
 use super::{
     dispatch::ModuleDispatch,
@@ -21,7 +21,7 @@ use super::{
     internal::ModuleInit,
     message::{ModuleMessage, ModuleMessageContainer, Topic},
     registry::ModuleRegistry,
-    HandleId, Module,
+    Module, ModuleHandleId,
 };
 
 /// Manages dynamic dispatch of messages between the [`crate::Snowcap`] engine and module instances.
@@ -29,10 +29,14 @@ use super::{
 pub struct ModuleManager {
     /// HashMap of HandleId to a ModuleDispatch instance
     /// for dispatching event messages with type erasure
-    dispatchers: HashMap<HandleId, ModuleDispatch>,
+    dispatchers: HashMap<ModuleHandleId, ModuleDispatch>,
 
-    /// Channel subscriptions
-    subscriptions: HashMap<Topic, Vec<HandleId>>,
+    /// Channel subscriptions. Each [`Topic`] key has a [`Vec`] of [`ModuleHandleId`]
+    /// to manage a list of handles to forward each published message to.
+    subscriptions: HashMap<Topic, Vec<ModuleHandleId>>,
+
+    /// Map of [`ModuleHandleId`] to [`NodeId`], for dispatching module data to nodes
+    nodes: HashMap<ModuleHandleId, NodeId>,
 }
 
 impl ModuleManager {
@@ -43,43 +47,48 @@ impl ModuleManager {
         Self {
             dispatchers: HashMap::new(),
             subscriptions: HashMap::new(),
+            nodes: HashMap::new(),
         }
     }
 
+    /// Register a module with the global [`ModuleRegistry`]
     pub fn register<T: ModuleInit + Module>(&self, name: &str) {
         ModuleRegistry::register::<T>(name);
     }
 
     /// Register internal modules with the registry
     fn register_internal() {
-        ModuleRegistry::register::<super::timing::TimingModule>("timing");
+        ModuleRegistry::register::<super::file::FileModule>("file");
         ModuleRegistry::register::<super::http::HttpModule>("http");
+        ModuleRegistry::register::<super::timing::TimingModule>("timing");
     }
 
-    /// Create a new module instance, start it, and return the init task
+    /// Create a new module instance, start it, and return a tuple of the [`ModuleHandleId`] and init [`iced::Task`]
     pub fn instantiate(
         &mut self,
         name: &String,
         args: ModuleArguments,
-    ) -> Result<Task<ModuleMessageContainer>, ModuleError> {
+    ) -> Result<(ModuleHandleId, Task<ModuleMessageContainer>), ModuleError> {
         let name = name.clone();
         // Get the descriptor from the [`ModuleRegistry']
         ModuleRegistry::get(&name, move |descriptor| {
             let mut dispatch = (descriptor.new)();
             let task = dispatch.start(&args);
 
+            let handle_id = dispatch.handle_id();
+
             // Register this module instance dispatcher with the manager
             self.dispatchers.insert(dispatch.handle_id(), dispatch);
 
-            Ok(task)
+            Ok((handle_id, task))
         })
     }
 
     /// Dispatch an event to a module specified by HandleId. The event will be downcast back to
     /// the concrete type by [`ModuleDispatch`]
-    pub fn dispatch_message(
+    fn dispatch_message(
         &mut self,
-        id: HandleId,
+        id: ModuleHandleId,
         message: ModuleMessageContainer,
     ) -> Task<ModuleMessageContainer> {
         if let Some(dispatcher) = self.dispatchers.get_mut(&id) {
@@ -95,7 +104,8 @@ impl ModuleManager {
         }
     }
 
-    pub fn subscribe(&mut self, handle_id: HandleId, channel: &Topic) {
+    /// Subscribe a module to a [`Topic`]
+    fn subscribe(&mut self, handle_id: ModuleHandleId, channel: &Topic) {
         debug!("Module HandleId {} subscribed to {:?}", handle_id, channel);
 
         self.subscriptions
@@ -104,7 +114,17 @@ impl ModuleManager {
             .push(handle_id);
     }
 
-    /// Handle a ModuleMessage. This is called from the iced update phase on receipt of a ModuleMessage.
+    /// Add the [`NodeId`] associated with a [`ModuleHandleId`]
+    pub fn set_module_node(&mut self, handle_id: ModuleHandleId, node_id: NodeId) {
+        self.nodes.insert(handle_id, node_id);
+    }
+
+    /// Get the [`NodeId`] associated with a [`ModuleHandleId`]
+    pub fn get_module_node(&mut self, handle_id: ModuleHandleId) -> Option<NodeId> {
+        self.nodes.get(&handle_id).copied()
+    }
+
+    /// Handle a ModuleMessage. This is called from [`Snowcap::update()`] on receipt of a [`ModuleMessage`].
     /// Dispatch the message to the module handle using the encapsulated HandleId.
     pub fn handle_message(
         &mut self,
@@ -121,13 +141,20 @@ impl ModuleManager {
             }
 
             ModuleMessage::Error(e) => {
-                error!("{e:#?}");
+                let node_id = self.get_module_node(message.handle_id());
+                error!(
+                    "Module HandleID: {} NodeID: {node_id:?} Error: {e:#?}",
+                    message.handle_id()
+                );
+
+                // TODO: Determine if the module needs to be restarted,
+                // handle backoff, and try again
                 Task::none()
             }
 
-            // Dispatch an event message to the module
-            ModuleMessage::Subscribe(channel) => {
-                self.subscribe(message.handle_id(), channel);
+            // Module is requesting a subscription to a [`Topic`]
+            ModuleMessage::Subscribe(topic) => {
+                self.subscribe(message.handle_id(), topic);
                 Task::none()
             }
 
@@ -153,6 +180,21 @@ impl ModuleManager {
                     warn!("Received Publish message {msg:?} with no subscribers");
                     Task::none()
                 }
+            }
+
+            // Data received from a module
+            ModuleMessage::Data(data) => {
+                println!(
+                    "Received {:?} data from Module HandleID: {}",
+                    data.kind(),
+                    message.handle_id()
+                );
+
+                // Find the NodeId
+                let node_id = self.nodes.get(&message.handle_id());
+                println!("Update data in {node_id:?}");
+
+                Task::none()
             }
 
             // Messages not handled internally should be dispatched to the module specified in message.handle_id

@@ -6,7 +6,8 @@ use colored::Colorize;
 use crate::Error;
 use crate::Message;
 
-use super::{event::ModuleEvent, HandleId};
+use super::data::ModuleData;
+use super::{event::ModuleEvent, ModuleHandleId};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Topic(pub &'static str);
@@ -51,7 +52,7 @@ pub enum ModuleMessage {
     #[default]
     None,
     Debug(&'static str),
-    Error(Arc<crate::Error>),
+    Error(Arc<Box<dyn std::error::Error + Send + Sync>>),
     Event(Arc<Box<dyn Any + Send + Sync>>),
 
     /// Module requesting a subscription to a channel
@@ -62,19 +63,22 @@ pub enum ModuleMessage {
 
     /// A published message being sent to a module
     Published(PublishMessage),
+
+    /// Data updated by module
+    Data(Arc<Box<dyn ModuleData>>),
 }
 
 /// A container for [`ModuleMessage`] containing additional decorations
 /// for dynamic dispatch of messages to module instances.
 #[derive(Debug, Clone)]
 pub struct ModuleMessageContainer {
-    handle_id: HandleId,
+    handle_id: ModuleHandleId,
     message: ModuleMessage,
 }
 
 impl ModuleMessageContainer {
     /// Create a new ModuleMessage with the specified module HandleId and inner message kind
-    pub fn new(handle_id: HandleId, kind: ModuleMessage) -> Self {
+    pub fn new(handle_id: ModuleHandleId, kind: ModuleMessage) -> Self {
         Self {
             handle_id,
             message: kind,
@@ -82,7 +86,7 @@ impl ModuleMessageContainer {
     }
 
     /// Get the module handle ID associated with this message
-    pub fn handle_id(&self) -> HandleId {
+    pub fn handle_id(&self) -> ModuleHandleId {
         self.handle_id
     }
 
@@ -105,12 +109,48 @@ impl ModuleMessageContainer {
     }
 }
 
-impl<T: ModuleEvent + 'static> From<(HandleId, T)> for ModuleMessageContainer {
-    fn from(value: (HandleId, T)) -> Self {
+/// Implement [`From`] on [`ModuleMessageContainer`] for tuples of `(ModuleHandleId, ModuleEvent)`
+impl<T: ModuleEvent + 'static> From<(ModuleHandleId, T)> for ModuleMessageContainer {
+    fn from(value: (ModuleHandleId, T)) -> Self {
         ModuleMessageContainer {
             handle_id: value.0,
             message: ModuleMessage::Event(Arc::new(Box::new(value.1))),
         }
+    }
+}
+
+/*
+/// Implement [`From`] on [`ModuleMessage`] for `Result<ModuleEvent, Error>`
+/// This allows futures [`iced::Task::perform()`] to return a `Result`, and
+/// it can be consumed using `ModuleMessage::from(result)`
+impl<E: ModuleEvent + 'static> From<Result<E, Error>> for ModuleMessage {
+    fn from(value: Result<E, Error>) -> Self {
+        match value {
+            Ok(event) => ModuleMessage::Event(Arc::new(Box::new(event))),
+            Err(err) => ModuleMessage::from(err),
+        }
+    }
+}
+*/
+
+/// Implement [`From`] on [`ModuleMessage`] for `Result<ModuleEvent, Error>`
+/// This allows futures [`iced::Task::perform()`] to return a `Result`, and
+/// it can be consumed using `ModuleMessage::from(result)`
+impl<Event: ModuleEvent + 'static, Err: std::error::Error + Send + Sync + 'static>
+    From<Result<Event, Err>> for ModuleMessage
+{
+    fn from(value: Result<Event, Err>) -> Self {
+        match value {
+            Ok(event) => ModuleMessage::Event(Arc::new(Box::new(event))),
+            Err(err) => ModuleMessage::Error(Arc::new(Box::new(err))),
+        }
+    }
+}
+
+/// Create a [`ModuleMessage`] from an [`Error`]
+impl From<crate::Error> for ModuleMessage {
+    fn from(err: crate::Error) -> Self {
+        ModuleMessage::Error(Arc::new(Box::new(err)))
     }
 }
 
@@ -124,14 +164,8 @@ impl<AppMessage> From<ModuleMessageContainer> for Message<AppMessage> {
 }
 
 /// Convert a tuple of (HandleId, crate::Error) into a ModuleMessage
-impl From<(HandleId, Error)> for ModuleMessageContainer {
-    fn from(value: (HandleId, Error)) -> Self {
-        ModuleMessageContainer::new(value.0, ModuleMessage::Error(Arc::new(value.1)))
-    }
-}
-
-impl From<Error> for ModuleMessage {
-    fn from(err: Error) -> Self {
-        ModuleMessage::Error(Arc::new(err))
+impl From<(ModuleHandleId, Error)> for ModuleMessageContainer {
+    fn from(value: (ModuleHandleId, Error)) -> Self {
+        ModuleMessageContainer::new(value.0, ModuleMessage::Error(Arc::new(Box::new(value.1))))
     }
 }

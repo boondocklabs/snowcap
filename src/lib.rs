@@ -122,6 +122,7 @@ use message::Event;
 use message::MessageDiscriminants;
 use message::WidgetMessage;
 use module::manager::ModuleManager;
+use module::message::ModuleMessage;
 use node::SnowcapNode;
 use parking_lot::Mutex;
 use tracing::warn;
@@ -376,7 +377,6 @@ where
             // so the affected widgets will be rebuilt on the next update pass.
             let _listener = tree
                 .on_event(|event| {
-                    println!("TREE EVENT {event:?}");
                     match event {
                         arbutus::TreeEvent::NodeRemoved { node } => {
                             if let Some(parent) = node.clone().node_mut().parent_mut() {
@@ -446,7 +446,7 @@ where
         node_id: &NodeId,
         message: &mut WidgetMessage,
     ) -> Task<Message<AppMessage>> {
-        info!("Widget Message for NodeId: {node_id}");
+        info!("Widget Message NodeId: {node_id}");
 
         if let Some(node) = self.tree.lock().as_mut().unwrap().get_node_mut(node_id) {
             node.node_mut().data_mut().set_dirty(true);
@@ -522,10 +522,26 @@ where
             let message = std::mem::take(message);
 
             let task = match message {
-                Message::Module(module_message) => self
-                    .modules
-                    .handle_message(module_message)
-                    .map(|m| Message::from(m)),
+                Message::Module(module_message) => {
+                    // Handle data messages to update the tree
+                    if let ModuleMessage::Data(data) = module_message.message() {
+                        if let Some(node_id) =
+                            self.modules.get_module_node(module_message.handle_id())
+                        {
+                            if let Some(tree) = &mut *self.tree.lock() {
+                                if let Some(node) = tree.get_node_mut(&node_id) {
+                                    node.node_mut().data_mut().set_module_data(data.clone());
+                                }
+                            }
+                        }
+
+                        Task::none()
+                    } else {
+                        self.modules
+                            .handle_message(module_message)
+                            .map(|m| Message::from(m))
+                    }
+                }
                 Message::App(app_message) => {
                     debug!("AppMessage {app_message:?}");
                     //f(&app_message)

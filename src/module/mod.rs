@@ -13,10 +13,14 @@ pub mod manager;
 pub mod message;
 pub mod registry;
 
+pub mod file;
 pub mod http;
 pub mod timing;
 
+pub mod data;
+
 use async_trait::async_trait;
+use data::ModuleData;
 use error::ModuleError;
 use event::ModuleEvent;
 use handle::ModuleHandle;
@@ -29,8 +33,11 @@ use message::{ModuleMessage, Topic, TopicMessage};
 
 use crate::{module::argument::ModuleArguments, NodeRef};
 
-pub(crate) type HandleId = u64;
-pub(crate) type DynModule<E> = Box<dyn ModuleInternal<Event = E>>;
+/// Module instance handle ID
+pub(crate) type ModuleHandleId = u64;
+
+/// Dynamic dispatch to an implementation of the sealed [`ModuleInternal`] trait
+pub(crate) type DynModule<E, D> = Box<dyn ModuleInternal<Event = E, Data = D>>;
 
 mod internal {
     //! Sealed Module traits for initializing modules, and dispatching messages
@@ -42,7 +49,7 @@ mod internal {
         argument::ModuleArguments,
         handle::ModuleHandle,
         message::{ModuleMessage, ModuleMessageContainer},
-        HandleId, Module, ModuleInitData,
+        Module, ModuleHandleId, ModuleInitData,
     };
     use iced::Task;
     use tracing::{debug, debug_span, Instrument as _};
@@ -56,7 +63,7 @@ mod internal {
         /// and returns an async Task to the iced runtime to call the async module init() method.
         fn start(
             &mut self,
-            handle: ModuleHandle<Self::Event>,
+            handle: ModuleHandle<Self::Event, Self::Data>,
             args: ModuleArguments,
         ) -> Task<ModuleMessageContainer>
         where
@@ -95,7 +102,7 @@ mod internal {
                                 Ok(event) => ModuleMessageContainer::from((handle_id, event)),
                                 Err(e) => ModuleMessageContainer::new(
                                     handle_id,
-                                    ModuleMessage::Error(Arc::new(Error::from(e))),
+                                    ModuleMessage::Error(Arc::new(Box::new(Error::from(e)))),
                                 ),
                             }
                         }
@@ -149,6 +156,11 @@ mod internal {
                 }
             })
         }
+
+        /// Get a Task to send data from this module to the Snowcap engine
+        fn send_data(&self, data: Self::Data) -> Task<ModuleMessage> {
+            Task::done(ModuleMessage::Data(Arc::new(Box::new(data))))
+        }
     }
 
     /// Module instantiation and registration. This is used to construct new
@@ -156,7 +168,7 @@ mod internal {
     /// dispatcher.
     pub trait ModuleInit: Default + Sized + Module + 'static {
         /// Instantiate this module
-        fn new(name: String, id: HandleId) -> ModuleHandle<Self::Event> {
+        fn new(name: String, id: ModuleHandleId) -> ModuleHandle<Self::Event, Self::Data> {
             ModuleHandle::new(name, id, Self::default())
         }
 
@@ -187,6 +199,8 @@ pub struct ModuleInitData {}
 pub trait Module: MaybeSend + MaybeSync + std::fmt::Debug {
     /// Internal module event type, for intra-module messaging
     type Event: ModuleEvent;
+
+    type Data: ModuleData + 'static;
 
     /// Async Module initialization method which is implemented by each available module.
     /// The set of arguments parsed from the grammar is included in `args` as [`crate::module::argument::ModuleArguments`]

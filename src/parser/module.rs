@@ -4,7 +4,10 @@ use pest_derive::Parser;
 use tracing::debug;
 
 use crate::{
-    module::argument::{ModuleArgument, ModuleArguments},
+    module::{
+        argument::{ModuleArgument, ModuleArguments},
+        ModuleHandleId,
+    },
     parser::value::ValueParser,
 };
 
@@ -17,6 +20,9 @@ pub struct Module {
     context: Option<ParserContext>,
     name: String,
     args: ModuleArguments,
+
+    /// Module Handle ID set after module is instantiated
+    handle_id: Option<ModuleHandleId>,
 }
 
 impl Module {
@@ -27,6 +33,15 @@ impl Module {
     pub fn args(&self) -> &ModuleArguments {
         &self.args
     }
+
+    pub fn handle_id(&self) -> Option<ModuleHandleId> {
+        self.handle_id
+    }
+
+    pub fn set_handle_id(&mut self, handle_id: ModuleHandleId) {
+        debug!("Module {} set handle {}", self, handle_id);
+        self.handle_id = Some(handle_id);
+    }
 }
 
 impl std::fmt::Display for Module {
@@ -35,6 +50,10 @@ impl std::fmt::Display for Module {
 
         if self.args.len() > 0 {
             write!(f, " {}", self.args)?;
+        }
+
+        if let Some(handle_id) = self.handle_id() {
+            write!(f, " handle_id: {handle_id}")?;
         }
 
         write!(f, "]")?;

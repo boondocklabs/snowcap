@@ -1,3 +1,4 @@
+/*
 use std::sync::Arc;
 
 use crate::error::ConversionError;
@@ -86,3 +87,4 @@ impl<'a> TryInto<&'a iced::widget::svg::Handle> for &'a DataType {
         }
     }
 }
+*/

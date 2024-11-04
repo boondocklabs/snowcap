@@ -3,6 +3,7 @@
 use colored::Colorize;
 use std::string::ToString;
 
+use std::sync::Arc;
 use std::{
     hash::{Hash, Hasher},
     ops::Deref,
@@ -12,6 +13,7 @@ use strum::{EnumDiscriminants, EnumIter};
 use xxhash_rust::xxh64::Xxh64;
 
 use crate::dynamic_widget::DynamicWidget;
+use crate::module::data::ModuleData;
 use crate::parser::module::Module;
 use crate::{attribute::Attributes, Value};
 
@@ -68,6 +70,7 @@ where
     content: Content,
     pub widget: Option<DynamicWidget<M>>,
     state: State,
+    module_data: Option<Arc<Box<dyn ModuleData>>>,
 }
 
 impl<M> Clone for SnowcapNode<M> {
@@ -78,6 +81,7 @@ impl<M> Clone for SnowcapNode<M> {
             content: self.content.clone(),
             widget: None,
             state: State::New,
+            module_data: None,
         }
     }
 }
@@ -116,6 +120,7 @@ impl<M> Default for SnowcapNode<M> {
             attrs: None,
             widget: None,
             state: State::New,
+            module_data: None,
         }
     }
 }
@@ -190,6 +195,18 @@ impl<M> SnowcapNode<M> {
     /// Get a mutable reference to the node content
     pub fn content_mut(&mut self) -> &mut Content {
         &mut self.content
+    }
+
+    /// Set the module data for this node. When a module sends a data message,
+    /// this field will be overwritten with the latest data from the module.
+    pub fn set_module_data(&mut self, data: Arc<Box<dyn ModuleData>>) {
+        self.module_data = Some(data);
+        self.set_dirty(true);
+    }
+
+    /// Get module data from this node
+    pub fn module_data(&self) -> Option<&Arc<Box<dyn ModuleData>>> {
+        self.module_data.as_ref()
     }
 }
 

@@ -2,7 +2,10 @@ use iced::Task;
 
 use crate::module::argument::ModuleArguments;
 
-use super::{event::ModuleEvent, message::ModuleMessageContainer, HandleId, ModuleHandle};
+use super::{
+    data::ModuleData, event::ModuleEvent, message::ModuleMessageContainer, ModuleHandle,
+    ModuleHandleId,
+};
 
 /// Module event dispatcher which provides type erasure of the concrete [`ModuleEvent`] type.
 ///
@@ -10,7 +13,7 @@ use super::{event::ModuleEvent, message::ModuleMessageContainer, HandleId, Modul
 /// downcasts it back to the original concrete type and passes it to the module's
 /// event handler method.
 pub struct ModuleDispatch {
-    handle_id: HandleId,
+    handle_id: ModuleHandleId,
 
     /// Start the module
     start: Box<dyn for<'b> FnMut(&'b ModuleArguments) -> Task<ModuleMessageContainer>>,
@@ -18,8 +21,7 @@ pub struct ModuleDispatch {
     // Closure function that takes a dyn Any of a [`ModuleEvent`] impl
     // this closure will downcast the Any
     //event_dispatch: Box<dyn FnMut(Arc<Box<dyn Any + Send + Sync>>) -> Task<ModuleMessage>>,
-
-    // Message dispatch
+    /// Dispatch a message to this module
     message_dispatch: Box<dyn FnMut(ModuleMessageContainer) -> Task<ModuleMessageContainer>>,
 }
 
@@ -27,7 +29,9 @@ impl ModuleDispatch {
     /// Create a new [`ModuleDispatch`] instance for a [`ModuleHandle`]. Creates closures
     /// to provide type erasure of the [`ModuleEvent`] for instantiation and message dispatch.
     /// This allows the dispatcher to be stored in collections of arbitrary module types using `dyn`.
-    pub fn new<E: ModuleEvent + 'static>(handle: ModuleHandle<E>) -> Self {
+    pub fn new<E: ModuleEvent + 'static, D: ModuleData + 'static>(
+        handle: ModuleHandle<E, D>,
+    ) -> Self {
         // Create a `message_dispatch` closure to forward a message to the on_message() handler of a module
         let message_handle = handle.clone();
         let handle_id = message_handle.id();
@@ -55,7 +59,7 @@ impl ModuleDispatch {
     }
 
     /// Get the [`HandleId`] associated with the [`ModuleHandle`] for this dispatcher
-    pub fn handle_id(&self) -> HandleId {
+    pub fn handle_id(&self) -> ModuleHandleId {
         self.handle_id
     }
 

@@ -1,10 +1,10 @@
 use crate::attribute::{AttributeKind, AttributeValue};
 use crate::cache::WidgetContent;
-use crate::parser::value::ValueData;
+use crate::util::ElementWrapper;
 //use crate::util::ElementWrapper;
 use crate::NodeId;
-use iced::widget::Text;
 use iced::widget::{Button, PickList, Rule, Space, Themer, Toggler};
+use iced::widget::{Image, Svg, Text};
 use tracing::warn;
 
 use crate::attribute::Attributes;
@@ -32,51 +32,58 @@ impl SnowcapWidget {
         M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
     {
         match name.as_str() {
-            "image" => {
-                if let WidgetContent::Value(value) = content {
-                    match value.inner() {
-                        ValueData::String(_) => todo!(),
-                        ValueData::Float(_) => todo!(),
-                        ValueData::Integer(_) => todo!(),
-                        ValueData::Boolean(_) => todo!(),
-                        ValueData::Array(_vec) => todo!(),
-                        ValueData::None => todo!(),
-                    }
-                } else {
-                    Err(ConversionError::InvalidType(
-                        "Image expecting ChildData::Value".into(),
-                    ))
+            "image" => match content {
+                WidgetContent::Module(module) => {
+                    println!("Image has Module content {module}");
+                    Ok(DynamicWidget::default().with_widget(Text::new("loading")))
                 }
-            }
-            "svg" => {
-                if let WidgetContent::Value(value) = content {
-                    match value.inner() {
-                        ValueData::String(_) => todo!(),
-                        ValueData::Float(_) => todo!(),
-                        ValueData::Integer(_) => todo!(),
-                        ValueData::Boolean(_) => todo!(),
-                        ValueData::Array(_vec) => todo!(),
-                        ValueData::None => todo!(),
-                    }
-                } else {
-                    Err(ConversionError::InvalidType(
-                        "Svg expecting ChildData::Value".into(),
-                    ))
+                WidgetContent::Image(handle) => {
+                    Ok(DynamicWidget::default().with_widget(Image::new(handle)))
                 }
-            }
-            "markdown" => {
-                if let WidgetContent::Value(value) = content {
-                    match value.inner() {
-                        _ => Err(ConversionError::InvalidType(
-                            "unexpected markdown {value:?}".into(),
-                        )),
-                    }
-                } else {
-                    Err(ConversionError::InvalidType(
-                        "unexpected markdown {content:?} expecting ChildData::Value".into(),
-                    ))
+                _ => Err(ConversionError::InvalidType(format!(
+                    "Image expecting WidgetContent::Image {}:{}",
+                    file!(),
+                    line!()
+                ))),
+            },
+            "svg" => match content {
+                WidgetContent::Module(_module) => {
+                    Ok(DynamicWidget::default().with_widget(Text::new("loading")))
                 }
-            }
+                WidgetContent::Svg(handle) => {
+                    let svg = Svg::new(handle);
+                    Ok(DynamicWidget::default().with_widget(svg))
+                }
+                _ => Err(ConversionError::InvalidType(format!(
+                    "Image expecting WidgetContent::Image {}:{}",
+                    file!(),
+                    line!()
+                ))),
+            },
+            "markdown" => match content {
+                WidgetContent::Module(_module) => {
+                    Ok(DynamicWidget::default().with_widget(Text::new("loading")))
+                }
+                //WidgetContent::Markdown(items) => {
+                WidgetContent::Text(text) => {
+                    let items: Vec<iced::widget::markdown::Item> =
+                        iced::widget::markdown::parse(&text).collect();
+                    let style =
+                        iced::widget::markdown::Style::from_palette(iced::Theme::Light.palette());
+
+                    let settings = iced::widget::markdown::Settings::default();
+
+                    let markdown = iced::widget::markdown(&items, settings, style)
+                        .map(move |url| M::from((node_id, WidgetMessage::Markdown(url))));
+                    let wrapped = ElementWrapper::<M>::new(markdown);
+                    Ok(DynamicWidget::default().with_widget(wrapped))
+                }
+                _ => Err(ConversionError::InvalidType(format!(
+                    "Markdown expecting WidgetContent::Markdown {}:{}",
+                    file!(),
+                    line!()
+                ))),
+            },
 
             /*
             "qr-code" => {
@@ -116,6 +123,8 @@ impl SnowcapWidget {
             "text" => {
                 let mut text = if let WidgetContent::Value(value) = content {
                     Text::new(value.inner())
+                } else if let WidgetContent::Text(value) = content {
+                    Text::new(value)
                 } else {
                     Text::new("X")
                 };
