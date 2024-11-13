@@ -29,7 +29,11 @@ module_arguments = { argument ~ ("," ~ argument)* }
 
 label = _{ (ASCII_ALPHA | "-")* }
 
-module_name   = { label }
-argument_name = { label }
+module_name = { label }
+
+// Argument names may not start with an underscore, which is reserved for arguments
+// generated internally, such as in the element attribute parser to indicate the attribute kind
+// to module instances.
+argument_name = { !"_" ~ label }
 
 module = { SOI ~ module_name ~ "!" ~ "{" ~ module_arguments? ~ "}" ~ EOI }

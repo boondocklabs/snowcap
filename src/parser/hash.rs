@@ -36,6 +36,7 @@ impl std::hash::Hash for ValueData {
             ValueData::Integer(num) => state.write(&num.to_ne_bytes()),
             ValueData::Boolean(b) => b.hash(state),
             ValueData::Array(vec) => vec.hash(state),
+            ValueData::AttributeKind(kind) => kind.hash(state),
             ValueData::None => {}
         }
     }

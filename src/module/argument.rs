@@ -10,7 +10,7 @@ use crate::{
 use super::error::ModuleError;
 
 /// A set of arguments for Modules parsed from the grammar
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ModuleArguments {
     arguments: HashMap<String, Value>,
 }

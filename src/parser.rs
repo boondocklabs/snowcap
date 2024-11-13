@@ -464,7 +464,7 @@ where
 
 /// Context information stored in tree nodes by the parser
 /// to provide location information from the parsed markup
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ParserContext {
     input: String,
     location: (usize, usize),

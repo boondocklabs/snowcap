@@ -111,6 +111,7 @@ impl std::hash::Hash for AttributeValue {
             AttributeValue::WidthLength(length) => hash_length(length, state),
             AttributeValue::WidthPixels(pixels) => hash_pixels(pixels, state),
             AttributeValue::MaxWidth(pixels) => hash_pixels(pixels, state),
+            AttributeValue::MaxHeight(pixels) => hash_pixels(pixels, state),
             AttributeValue::HeightLength(length) => hash_length(length, state),
             AttributeValue::HeightPixels(pixels) => hash_pixels(pixels, state),
             AttributeValue::Background(background) => hash_background(background, state),
@@ -126,6 +127,10 @@ impl std::hash::Hash for AttributeValue {
             AttributeValue::Shaping(shaping) => shaping.hash(state),
             AttributeValue::SliderValue(value) => value.hash(state),
             AttributeValue::ScrollDirection(direction) => hash_direction(direction, state),
+            AttributeValue::Module { kind, module } => {
+                kind.hash(state);
+                module.hash(state);
+            }
         }
     }
 }

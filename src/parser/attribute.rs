@@ -7,11 +7,12 @@ use pest_derive::Parser;
 use tracing::{debug, debug_span, warn};
 
 use crate::{
-    attribute::{Attribute, AttributeValue, Attributes},
-    parser::{color::ColorParser, gradient::GradientParser},
+    attribute::{Attribute, AttributeKind, AttributeValue, Attributes},
+    module::argument::ModuleArgument,
+    parser::{color::ColorParser, gradient::GradientParser, module::ModuleParser, ParserContext},
 };
 
-use super::ParseError;
+use super::{ParseError, Value};
 
 #[derive(Debug)]
 enum AttributeOption {
@@ -48,36 +49,30 @@ impl AttributeParser {
 
     fn parse_alignment(pair: Pair<'_, Rule>) -> Result<AttributeValue, ParseError> {
         match pair.as_rule() {
-            Rule::horizontal => {
-                debug!("HORIZONTAL");
-                match pair.into_inner().last().unwrap().as_rule() {
-                    Rule::left => Ok(AttributeValue::HorizontalAlignment(
-                        iced::alignment::Horizontal::Left,
-                    )),
-                    Rule::center => Ok(AttributeValue::HorizontalAlignment(
-                        iced::alignment::Horizontal::Center,
-                    )),
-                    Rule::right => Ok(AttributeValue::HorizontalAlignment(
-                        iced::alignment::Horizontal::Right,
-                    )),
-                    _ => panic!("unknown horizontal alignment value"),
-                }
-            }
-            Rule::vertical => {
-                debug!("VERTICAL");
-                match pair.into_inner().last().unwrap().as_rule() {
-                    Rule::top => Ok(AttributeValue::VerticalAlignment(
-                        iced::alignment::Vertical::Top,
-                    )),
-                    Rule::center => Ok(AttributeValue::VerticalAlignment(
-                        iced::alignment::Vertical::Center,
-                    )),
-                    Rule::bottom => Ok(AttributeValue::VerticalAlignment(
-                        iced::alignment::Vertical::Bottom,
-                    )),
-                    _ => panic!("unknown horizontal alignment value"),
-                }
-            }
+            Rule::horizontal => match pair.into_inner().last().unwrap().as_rule() {
+                Rule::left => Ok(AttributeValue::HorizontalAlignment(
+                    iced::alignment::Horizontal::Left,
+                )),
+                Rule::center => Ok(AttributeValue::HorizontalAlignment(
+                    iced::alignment::Horizontal::Center,
+                )),
+                Rule::right => Ok(AttributeValue::HorizontalAlignment(
+                    iced::alignment::Horizontal::Right,
+                )),
+                _ => panic!("unknown horizontal alignment value"),
+            },
+            Rule::vertical => match pair.into_inner().last().unwrap().as_rule() {
+                Rule::top => Ok(AttributeValue::VerticalAlignment(
+                    iced::alignment::Vertical::Top,
+                )),
+                Rule::center => Ok(AttributeValue::VerticalAlignment(
+                    iced::alignment::Vertical::Center,
+                )),
+                Rule::bottom => Ok(AttributeValue::VerticalAlignment(
+                    iced::alignment::Vertical::Bottom,
+                )),
+                _ => panic!("unknown horizontal alignment value"),
+            },
             _ => {
                 return Err(ParseError::UnsupportedRule(format!(
                     "attr_align_x {:?}",
@@ -186,9 +181,10 @@ impl AttributeParser {
                 Rule::option_left => {
                     padding.left(Self::parse_float(pair.into_inner().last().unwrap())?)
                 }
+                Rule::delimiter => continue,
                 _ => {
                     return Err(ParseError::UnsupportedRule(format!(
-                        "padding {:?}",
+                        "Padding unsupported rule: {:?}",
                         pair.as_rule()
                     )))
                 }
@@ -297,7 +293,65 @@ impl AttributeParser {
         }
     }
 
+    /// Get the [`AttributeKind`] for a pair
+    fn pair_kind(pair: &Pair<'_, Rule>) -> Result<AttributeKind, ParseError> {
+        match pair.as_rule() {
+            Rule::attr_background => Ok(AttributeKind::Background),
+            Rule::attr_text_color => Ok(AttributeKind::TextColor),
+            Rule::attr_align_x => Ok(AttributeKind::HorizontalAlignment),
+            Rule::attr_align_y => Ok(AttributeKind::VerticalAlignment),
+            Rule::attr_padding => Ok(AttributeKind::Padding),
+            Rule::attr_height => Ok(AttributeKind::HeightPixels),
+            Rule::attr_width => Ok(AttributeKind::WidthPixels),
+            Rule::attr_spacing => Ok(AttributeKind::Spacing),
+            Rule::attr_size => Ok(AttributeKind::Size),
+            Rule::attr_cell_size => Ok(AttributeKind::CellSize),
+            Rule::attr_selected => Ok(AttributeKind::Selected),
+            Rule::attr_label => Ok(AttributeKind::Label),
+            Rule::attr_max_width => Ok(AttributeKind::MaxWidth),
+            Rule::attr_max_height => Ok(AttributeKind::MaxHeight),
+            Rule::attr_align => Ok(AttributeKind::HorizontalAlignment),
+            Rule::attr_clip => Ok(AttributeKind::Clip),
+            Rule::attr_toggled => Ok(AttributeKind::Toggled),
+            Rule::attr_wrapping => Ok(AttributeKind::Wrapping),
+            Rule::attr_shaping => Ok(AttributeKind::Shaping),
+            Rule::attr_border => Ok(AttributeKind::Border),
+            Rule::attr_shadow => Ok(AttributeKind::Shadow),
+            Rule::attr_direction => Ok(AttributeKind::ScrollDirection),
+            _ => Err(ParseError::UnsupportedRule(format!(
+                "In pair_kind() rule={:?} {}:{}",
+                pair.as_rule(),
+                file!(),
+                line!()
+            ))),
+        }
+    }
+
     fn parse_attribute(pair: Pair<'_, Rule>) -> Result<Option<AttributeValue>, ParseError> {
+        // Check if this pair contains a module
+        let mut inner = pair.clone().into_inner();
+        let module = inner.find(|pair| {
+            if pair.as_rule() == Rule::module {
+                true
+            } else {
+                false
+            }
+        });
+
+        // If we found a module, parse it and return [`AttributeValue::Module`]
+        if let Some(module) = module {
+            let kind = Self::pair_kind(&pair)?;
+            let mut module = ModuleParser::parse_str(module.as_str(), ParserContext::default())?;
+
+            // Insert module arguments
+            module.args_mut().insert(ModuleArgument::new(
+                "_attribute".into(),
+                Value::new_attribute_kind(kind),
+            ));
+
+            return Ok(Some(AttributeValue::Module { kind, module }));
+        }
+
         match pair.as_rule() {
             Rule::attr_background => Ok(Some(Self::parse_background(pair.into_inner())?)),
             Rule::attr_text_color => {

@@ -55,6 +55,8 @@ tracing-test = { version = "0.2.5", features = ["no-env-filter"] }
 # In order to run tests with an iced application context,
 # we need to disable the internal harness so we can run on the main thread
 [[test]]
-name = "app-tests"
+# Disable by default, run `cargo test --test app` to run
+test = false
+name = "app"
 path = "app-tests/main.rs"
 harness = false

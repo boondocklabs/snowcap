@@ -1,6 +1,8 @@
 use arbutus::Tree;
 use colored::Colorize;
 
+mod module;
+
 use crate::{Message, NodeRef, SnowcapParser};
 
 type M = Message;
@@ -30,32 +32,4 @@ fn row() {
 #[test]
 fn col() {
     parse(r#"{col[text("a"), text("b")]}"#);
-}
-
-#[test]
-fn module_row() {
-    parse(r#"{row[x!{}, y!{}, z!{}]}"#);
-}
-
-#[test]
-fn module_component() {
-    parse(
-        r#"
-            {
-                something!{path:"./test.txt"}
-            }
-            "#,
-    );
-}
-
-/// Test parsing a module passed as widget content
-#[test]
-fn module_content() {
-    parse(
-        r#"
-            {
-                text(counter!{event: "button1", init:2})
-            }
-            "#,
-    );
 }

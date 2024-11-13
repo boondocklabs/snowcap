@@ -14,7 +14,7 @@ use crate::{
 use super::{error::ParseError, ParserContext};
 
 /// Parsed Module from the grammar and tree node representation
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Module {
     /// Parser context from the parent parser
     context: Option<ParserContext>,
@@ -36,6 +36,10 @@ impl Module {
 
     pub fn args(&self) -> &ModuleArguments {
         &self.args
+    }
+
+    pub fn args_mut(&mut self) -> &mut ModuleArguments {
+        &mut self.args
     }
 
     pub fn handle_id(&self) -> Option<ModuleHandleId> {

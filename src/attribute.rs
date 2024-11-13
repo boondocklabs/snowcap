@@ -13,7 +13,7 @@ use parking_lot::{ArcRwLockReadGuard, RawRwLock, RwLock};
 use strum::{EnumDiscriminants, EnumIter};
 use xxhash_rust::xxh64::Xxh64;
 
-use crate::SyncError;
+use crate::{parser::module::Module, SyncError};
 
 mod hash;
 
@@ -40,6 +40,8 @@ pub enum AttributeValue {
     WidthPixels(iced::Pixels),
     /// Maximum width in [`iced::Pixels`]
     MaxWidth(iced::Pixels),
+    /// Maximum height in [`iced::Pixels`]
+    MaxHeight(iced::Pixels),
     /// Height in units of [`iced::Length`]
     HeightLength(iced::Length),
     /// Height in units of [`iced::Pixels`]
@@ -70,6 +72,9 @@ pub enum AttributeValue {
     SliderValue(i32),
     /// Scroll Direction
     ScrollDirection(iced::widget::scrollable::Direction),
+
+    /// Attribute is attached to a Module
+    Module { kind: AttributeKind, module: Module },
 }
 
 impl AttributeValue {
@@ -81,8 +86,7 @@ impl AttributeValue {
 
 impl std::fmt::Display for AttributeValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let attribute_type: AttributeKind = self.into();
-        write!(f, "{:?}", attribute_type)
+        write!(f, "{:?}", self.kind())
     }
 }
 
@@ -195,7 +199,7 @@ impl std::fmt::Debug for Attributes {
 
 impl std::fmt::Display for Attributes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("[")?;
+        f.write_str("<")?;
         let mut iter = self.into_iter().peekable();
         loop {
             if let Some(attr) = iter.next() {
@@ -207,7 +211,7 @@ impl std::fmt::Display for Attributes {
                 break;
             }
         }
-        f.write_str("]")?;
+        f.write_str(">")?;
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use crate::ConversionError;
+use crate::{attribute::AttributeKind, ConversionError};
 
 use super::{error::ParseError, ParserContext};
 use iced::widget::text::IntoFragment;
@@ -53,6 +53,13 @@ impl Value {
     pub fn new_array(val: Vec<Self>) -> Self {
         Self {
             inner: ValueData::Array(val),
+            context: None,
+        }
+    }
+
+    pub fn new_attribute_kind(val: AttributeKind) -> Self {
+        Self {
+            inner: ValueData::AttributeKind(val),
             context: None,
         }
     }
@@ -146,6 +153,7 @@ pub enum ValueData {
     Integer(u64),
     Boolean(bool),
     Array(Vec<Value>),
+    AttributeKind(AttributeKind),
 }
 
 impl Eq for ValueData {}
@@ -188,6 +196,7 @@ impl std::fmt::Display for ValueData {
                 }
                 f.write_char(']')
             }
+            ValueData::AttributeKind(kind) => f.write_fmt(format_args!("{:?}", kind)),
             ValueData::None => write!(f, "None"),
         }
     }
@@ -247,6 +256,7 @@ impl<'a> Into<std::borrow::Cow<'a, str>> for &ValueData {
             ValueData::Integer(n) => format!("{n}").into(),
             ValueData::Boolean(b) => format!("{b}").into(),
             ValueData::Array(_value) => todo!(),
+            ValueData::AttributeKind(_kind) => todo!(),
             ValueData::None => format!("None").into(),
         }
     }

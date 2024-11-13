@@ -29,6 +29,9 @@ direction_horizontal = { ^"horizontal" }
 direction_vertical   = { ^"vertical" }
 both                 = { ^"both" }
 
+// Delimiter
+delimiter = { ":" }
+
 attributes = _{
     attr_padding
   | attr_width
@@ -55,29 +58,29 @@ attributes = _{
   | attr_direction
 }
 
-attr_padding = { ^"padding" ~ ":" ~ (full | edge | uniform | padding_option_list) }
+attr_padding = { ^"padding" ~ delimiter ~ (full | edge | uniform | padding_option_list | module) }
 
-attr_width      = { ^"width" ~ ":" ~ (length | pixels) }
-attr_height     = { ^"height" ~ ":" ~ (length | pixels) }
-attr_max_width  = { ^"max-width" ~ ":" ~ pixels }
-attr_max_height = { ^"max-height" ~ ":" ~ pixels }
-attr_size       = { ^"size" ~ ":" ~ pixels }
-attr_cell_size  = { ^"cell-size" ~ ":" ~ pixels }
-attr_spacing    = { ^"spacing" ~ ":" ~ pixels }
-attr_align_x    = { ^"align-x" ~ ":" ~ horizontal }
-attr_align_y    = { ^"align-y" ~ ":" ~ vertical }
-attr_align      = { ^"align" ~ ":" ~ (horizontal | vertical) }
-attr_text_color = { (^"text-color" | ^"text-colour") ~ ":" ~ (color_hex | option_color) }
-attr_background = { (^"background" | ^"bg") ~ ":" ~ (option_gradient | option_color) }
-attr_selected   = { (^"selected") ~ ":" ~ string }
-attr_label      = { (^"label") ~ ":" ~ string }
-attr_clip       = { (^"clip") ~ ":" ~ boolean }
-attr_toggled    = { (^"toggled") ~ ":" ~ boolean }
-attr_wrapping   = { (^"wrapping") ~ ":" ~ (glyph | word | none | either) }
-attr_shaping    = { (^"shaping") ~ ":" ~ (basic | advanced) }
-attr_border     = { (^"border") ~ ":" ~ border_option_list }
-attr_shadow     = { (^"shadow") ~ ":" ~ shadow_option_list }
-attr_direction  = { (^"direction") ~ ":" ~ (direction_horizontal | direction_vertical | both) }
+attr_width      = { ^"width" ~ delimiter ~ (length | pixels | module) }
+attr_height     = { ^"height" ~ delimiter ~ (length | pixels | module) }
+attr_max_width  = { ^"max-width" ~ delimiter ~ (pixels | module) }
+attr_max_height = { ^"max-height" ~ delimiter ~ (pixels | module) }
+attr_size       = { ^"size" ~ delimiter ~ (pixels | module) }
+attr_cell_size  = { ^"cell-size" ~ delimiter ~ (pixels | module) }
+attr_spacing    = { ^"spacing" ~ delimiter ~ (pixels | module) }
+attr_align_x    = { ^"align-x" ~ delimiter ~ (horizontal | module) }
+attr_align_y    = { ^"align-y" ~ delimiter ~ (vertical | module) }
+attr_align      = { ^"align" ~ delimiter ~ (horizontal | vertical | module) }
+attr_text_color = { (^"text-color" | ^"text-colour") ~ delimiter ~ (color_hex | option_color | module) }
+attr_background = { (^"background" | ^"bg") ~ delimiter ~ (option_gradient | option_color | module) }
+attr_selected   = { (^"selected") ~ delimiter ~ (string | module) }
+attr_label      = { (^"label") ~ delimiter ~ (string | module) }
+attr_clip       = { (^"clip") ~ delimiter ~ (boolean | module) }
+attr_toggled    = { (^"toggled") ~ delimiter ~ (boolean | module) }
+attr_wrapping   = { (^"wrapping") ~ delimiter ~ (glyph | word | none | either | module) }
+attr_shaping    = { (^"shaping") ~ delimiter ~ (basic | advanced | module) }
+attr_border     = { (^"border") ~ delimiter ~ (border_option_list | module) }
+attr_shadow     = { (^"shadow") ~ delimiter ~ (shadow_option_list | module) }
+attr_direction  = { (^"direction") ~ delimiter ~ (direction_horizontal | direction_vertical | both | module) }
 
 padding_option_list = _{ padding_option ~ ("," ~ padding_option)* }
 padding_option      = _{ option_top | option_bottom | option_left | option_right }
@@ -136,6 +139,11 @@ color_hex          =  { "#" ~ (color_hex_rrggbbaa | color_hex_rrggbb | color_hex
 color = @{ proxy }
 // Gradients are parsed as strings, and passed to GradientParser
 gradient = @{ proxy }
+
+// Module
+module_name      = @{ (ASCII_ALPHA | "-")* }
+module_arguments = @{ (!("{" | "}") ~ ANY)* }
+module           =  { module_name ~ "!" ~ "{" ~ module_arguments ~ "}" }
 
 proxy = @{ (!("(" | ")") ~ ANY)* }
 
