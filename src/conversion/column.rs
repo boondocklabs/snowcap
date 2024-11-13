@@ -5,8 +5,6 @@ use crate::{
     cache::WidgetContent,
     dynamic_widget::DynamicWidget,
     error::ConversionError,
-    message::WidgetMessage,
-    NodeId,
 };
 
 pub struct SnowcapColumn;
@@ -17,7 +15,7 @@ impl SnowcapColumn {
         contents: WidgetContent<M>,
     ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
+        M: std::fmt::Debug + 'static,
     {
         let mut col = Column::with_children(contents);
 
@@ -27,8 +25,11 @@ impl SnowcapColumn {
                 AttributeValue::Padding(padding) => col.padding(padding),
                 AttributeValue::WidthLength(length) => col.width(length),
                 AttributeValue::HeightLength(length) => col.height(length),
+                AttributeValue::WidthPixels(length) => col.width(length),
+                AttributeValue::HeightPixels(length) => col.height(length),
                 AttributeValue::Spacing(pixels) => col.spacing(pixels),
                 AttributeValue::MaxWidth(length) => col.max_width(length),
+                AttributeValue::Clip(clip) => col.clip(clip),
                 _ => return Err(ConversionError::UnsupportedAttribute(attr, "Column".into())),
             };
         }

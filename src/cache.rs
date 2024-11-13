@@ -1,11 +1,12 @@
 //! In-tree widget cache and Tree widget updates
 
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
 use arbutus::{TreeNode, TreeNodeRef as _};
 use colored::Colorize as _;
-use iced::{advanced::graphics::futures::MaybeSend, Element, Task};
-use tracing::{debug, debug_span};
+use iced::{Element, Task};
+use salish::Message;
+use tracing::{debug, debug_span, instrument};
 
 use crate::{
     attribute::Attributes,
@@ -14,8 +15,7 @@ use crate::{
         widget::SnowcapWidget,
     },
     dynamic_widget::DynamicWidget,
-    message::{Event, WidgetMessage},
-    module::{data::ModuleData, manager::ModuleManager, message::ModuleMessageContainer},
+    module::{data::ModuleData, manager::ModuleManager},
     node::{Content, SnowcapNode, State},
     parser::module::Module,
     ConversionError, IndexedTree, NodeId, NodeRef, Value,
@@ -121,34 +121,44 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct WidgetCache;
+/// Cache of Widgets and tree updates
+#[derive(Default, Debug)]
+pub struct WidgetCache {
+    widgets: HashMap<NodeId, DynamicWidget<Message>>,
+}
 
 impl WidgetCache {
-    /// Find dirty node paths, mark nodes as dirty along the path and drop widgets.
+    #[instrument("cache")]
+    pub fn drop_widget(&mut self, node_id: NodeId) {
+        debug!("Dropping widget {node_id}");
+        self.widgets.remove(&node_id);
+    }
+
+    /// Get the cached widget for the specified NodeId, or None
+    /// if it doesn't exist in the cache
+    pub fn get(&self, node_id: NodeId) -> Option<DynamicWidget<Message>> {
+        self.widgets.get(&node_id).cloned()
+    }
+
+    /// Find dirty paths, mark nodes as dirty along the path and drop widgets.
     ///
     /// This must be done in its own scope so the RwLock write guards in WidgetRef are released.
     /// The parent of a node holds its WidgetRef in the contents of the parent,
     /// so we drop all widgets along the path before rebuilding.
     #[profiling::function]
-    fn mark_dirty_paths<M>(
-        tree: &IndexedTree<M>,
+    fn mark_dirty_paths(
+        &mut self,
+        tree: &IndexedTree,
         modules: &mut ModuleManager,
-    ) -> Result<(Vec<NodeRef<M>>, Vec<Task<M>>), ConversionError>
-    where
-        M: Clone
-            + std::fmt::Debug
-            + From<(NodeId, WidgetMessage)>
-            + From<Event>
-            + From<ModuleMessageContainer>
-            + MaybeSend
-            + 'static,
+    ) -> Result<(Vec<NodeRef>, Vec<Task<Message>>), ConversionError>
+where
+        //M: std::fmt::Debug + From<WidgetMessage> + From<ModuleMessage> + MaybeSend + 'static,
     {
         let start = Instant::now();
 
         // Nodes which need updates
-        let mut update_queue: Vec<NodeRef<M>> = Vec::new();
-        let mut tasks: Vec<Task<M>> = Vec::new();
+        let mut update_queue: Vec<NodeRef> = Vec::new();
+        let mut tasks: Vec<Task<Message>> = Vec::new();
 
         debug!("Start marking dirty paths");
 
@@ -164,8 +174,11 @@ impl WidgetCache {
 
             match node.data().get_state() {
                 State::New => {
+                    let data = node.data_mut();
                     // Check if this node is a Module, and instantiate the module
-                    if let Content::Module(module) = node.data_mut().content_mut() {
+                    if let Content::Module(module) = data.content_mut() {
+                        let args = module.args().clone();
+
                         // Instantate the module, and get its handle_id and init task
                         let (handle_id, task) =
                             modules.instantiate(module.name(), module.args().clone())?;
@@ -173,14 +186,18 @@ impl WidgetCache {
                         // Set the Handle ID of the instantiated module into the tree node
                         module.set_handle_id(handle_id);
 
-                        // Set the node ID associated with this module instance in the [`ModuleManager`]
-                        modules.set_module_node(handle_id, node.id());
-
-                        let task = task.map(|m| M::from(m));
+                        // Connect a NodeRef to the module
+                        modules.connect_node(handle_id, noderef.clone());
 
                         // Push the update task from the module to the set of tasks to run
                         // after this update pass has completed.
                         tasks.push(task);
+
+                        println!(
+                            "Instantiated module handle {handle_id} for node {} args {}",
+                            node.id().clone(),
+                            args
+                        );
                     }
 
                     drop(node);
@@ -192,7 +209,8 @@ impl WidgetCache {
                         node.id(),
                         node.data()
                     );
-                    drop(node.data_mut().widget.take());
+                    self.drop_widget(node.id());
+                    //drop(node.data_mut().widget.take());
 
                     // Mark the parent widget as dirty
                     if let Some(parent) = node.parent_mut() {
@@ -219,31 +237,27 @@ impl WidgetCache {
 
     /// Collect cached [`DynamicWidget`] objects for all children of this node, if there are any.
     /// Returns None if no cached widgets are available.
-    fn child_widgets<M>(node: &NodeRef<M>) -> Option<Vec<DynamicWidget<M>>>
-    where
-        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + From<Event> + 'static,
-    {
+    fn child_widgets(&self, node: &NodeRef) -> Option<Vec<DynamicWidget<Message>>> {
         let node = node.node();
 
-        let child_widgets: Option<Vec<DynamicWidget<M>>> = node.children().and_then(|children| {
-            let widgets: Vec<DynamicWidget<M>> = children
-                .iter()
-                .filter_map(|child| child.node().data().widget.clone())
-                .collect();
+        let child_widgets: Option<Vec<DynamicWidget<Message>>> =
+            node.children().and_then(|children| {
+                let widgets: Vec<DynamicWidget<Message>> = children
+                    .iter()
+                    //.filter_map(|child| child.node().data().widget.clone())
+                    .filter_map(|child| self.widgets.get(&child.node().id()).cloned())
+                    .collect();
 
-            (!widgets.is_empty()).then_some(widgets)
-        });
+                (!widgets.is_empty()).then_some(widgets)
+            });
         child_widgets
     }
 
     /// Get [`WidgetContent`] for a node from a Vec of [`DynamicWidget`] of the children
-    fn widget_content<M>(
-        noderef: &NodeRef<M>,
-        child_widgets: Option<Vec<DynamicWidget<M>>>,
-    ) -> WidgetContent<M>
-    where
-        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + From<Event> + 'static,
-    {
+    fn widget_content(
+        noderef: &NodeRef,
+        child_widgets: Option<Vec<DynamicWidget<Message>>>,
+    ) -> WidgetContent<Message> {
         let node = noderef.node();
 
         let content = if let Some(mut children) = child_widgets {
@@ -267,7 +281,7 @@ impl WidgetCache {
                     Content::Value(value) => WidgetContent::Value(value.clone()),
                     Content::Module(module) => {
                         if let Some(data) = child.node().data().module_data() {
-                            WidgetContent::from(&**data)
+                            WidgetContent::from(data)
                         } else {
                             WidgetContent::Module(module.clone())
                         }
@@ -286,15 +300,12 @@ impl WidgetCache {
     }
 
     /// Build the widget for a Node
-    fn build_widget<M>(
+    fn build_widget(
         node_id: NodeId,
         attrs: Attributes,
-        data: &SnowcapNode<M>,
-        content: WidgetContent<M>,
-    ) -> Result<Option<DynamicWidget<M>>, ConversionError>
-    where
-        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + From<Event> + 'static,
-    {
+        data: &SnowcapNode,
+        content: WidgetContent<Message>,
+    ) -> Result<Option<DynamicWidget<Message>>, ConversionError> {
         let widget = match &**data {
             Content::Widget(widget) => {
                 debug!("Building widget {widget} node {node_id} contents {content}");
@@ -348,24 +359,25 @@ impl WidgetCache {
 
     /// Perform updates to widgets in the tree
     #[profiling::function]
-    pub fn update_tree<M>(
-        tree: &IndexedTree<M>,
+    pub fn update_tree(
+        &mut self,
+        tree: &IndexedTree,
         module_manager: &mut ModuleManager,
-    ) -> Result<Task<M>, ConversionError>
-    where
+    ) -> Result<Task<Message>, ConversionError>
+where
+        /*
         M: Clone
             + std::fmt::Debug
-            + From<(NodeId, WidgetMessage)>
-            + From<Event>
-            + From<ModuleMessageContainer>
+            //+ From<WidgetMessage>
+            //+ From<ModuleMessage>
             + MaybeSend
             + 'static,
-    {
+        */ {
         let start = Instant::now();
 
         debug_span!("tree-update").in_scope(|| {
             // First pass - Find dirty paths, mark nodes along the paths as dirty, and drop cached widgets
-            let (queue, tasks) = Self::mark_dirty_paths(tree, module_manager)?;
+            let (queue, tasks) = self.mark_dirty_paths(tree, module_manager)?;
 
             for noderef in queue {
                 let node = noderef.try_node()?;
@@ -373,13 +385,13 @@ impl WidgetCache {
                 let node_id = node.id();
                 let attrs = data.attrs.clone();
 
-                if data.widget.is_some() {
+                if self.widgets.contains_key(&node_id) {
                     // Already have a widget for this node, continue down the tree
                     return Ok(Task::none());
                 }
 
                 // Get a Vec of the children's DynamicWidgets
-                let child_widgets = Self::child_widgets(&noderef);
+                let child_widgets = self.child_widgets(&noderef);
 
                 // Get the WidgetContent for this node
                 let content = Self::widget_content(&noderef, child_widgets);
@@ -390,8 +402,9 @@ impl WidgetCache {
                 drop(node);
 
                 if let Some(widget) = widget {
-                    // Replace the widget in the tree node
-                    noderef.try_node_mut()?.data_mut().widget.replace(widget);
+                    // Replace the widget
+                    self.widgets.insert(node_id, widget);
+                    //noderef.try_node_mut()?.data_mut().widget.replace(widget);
                 }
 
                 // Mark the node as clean
@@ -408,6 +421,7 @@ impl WidgetCache {
 
 #[cfg(test)]
 mod tests {
+    use crate::Source;
     use tracing_test::traced_test;
 
     use crate::{cache::WidgetCache, module::manager::ModuleManager, Message, SnowcapParser};
@@ -415,16 +429,20 @@ mod tests {
     #[traced_test]
     #[test]
     pub fn build_tree_widgets() {
-        let tree = SnowcapParser::<Message<String>>::parse_memory(
-            r#"{-[text("A"), text("B"), text("C")]}"#,
-        )
-        .unwrap()
-        .index();
+        let tree =
+            SnowcapParser::<Message>::parse_memory(r#"{-[text("A"), text("B"), text("C")]}"#)
+                .unwrap()
+                .index();
 
         println!("{}", tree.root());
 
-        let mut modules = ModuleManager::new();
+        let router =
+            salish::router::MessageRouter::<iced::Task<salish::message::Message>, Source>::new();
 
-        let _task = WidgetCache::update_tree(&tree, &mut modules).unwrap();
+        let mut modules = ModuleManager::new(router);
+
+        let mut cache = WidgetCache::default();
+
+        let _task = cache.update_tree(&tree, &mut modules).unwrap();
     }
 }

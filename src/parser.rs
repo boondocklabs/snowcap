@@ -4,7 +4,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::Path;
 
-use arbutus::{NodeBuilder, TreeBuilder, TreeNodeRef};
+use arbutus::{NodeBuilder, TreeBuilder, TreeNodeRef as _};
 use attribute::AttributeParser;
 use module::ModuleParser;
 use pest::iterators::{Pair, Pairs};
@@ -15,9 +15,8 @@ use value::{ValueData, ValueParser};
 
 use crate::attribute::Attributes;
 
-use crate::message::{Event, WidgetMessage};
 use crate::node::{Content, SnowcapNode};
-use crate::{NodeId, Tree};
+use crate::Tree;
 
 pub(crate) mod attribute;
 pub(crate) mod color;
@@ -30,17 +29,17 @@ pub(crate) mod value;
 pub use value::Value;
 
 #[cfg(test)]
-mod test;
+mod tests;
 
 use error::{ParseError, ParseErrorContext};
 
-type SnowNodeBuilder<'a, M> = NodeBuilder<
+type SnowNodeBuilder<'a> = NodeBuilder<
     'a,
-    SnowcapNode<M>,
+    SnowcapNode,
     ParseError,
     arbutus::IdGenerator,
-    crate::Node<SnowcapNode<M>, crate::NodeId>,
-    crate::NodeRef<M>,
+    crate::Node<SnowcapNode, crate::NodeId>,
+    crate::NodeRef,
 >;
 
 /// Parses a top level Snowcap grammar and produces an [`arbutus::Tree`] of [`crate::node::SnowcapNode`] nodes.
@@ -62,7 +61,7 @@ impl<M> Default for SnowcapParser<M> {
 
 impl<M> SnowcapParser<M>
 where
-    M: Clone + std::fmt::Debug + From<Event> + From<(NodeId, WidgetMessage)>,
+    M: std::fmt::Debug,
 {
     /// Parse a Snowcap file into an [`arbutus::Tree`].
     ///
@@ -73,7 +72,7 @@ where
     /// # Returns
     ///
     /// A `Result` containing the parsed [`arbutus::Tree`], or a [`crate::Error`] if parsing fails.
-    pub fn parse_file(filename: &Path) -> Result<Tree<M>, crate::Error> {
+    pub fn parse_file(filename: &Path) -> Result<Tree, crate::Error> {
         tracing::info!("Parsing file {filename:?}");
         let data = std::fs::read_to_string(filename).expect("cannot read file");
         SnowcapParser::<M>::parse_memory(data.as_str()).map_err(|e| crate::Error::Parse(e))
@@ -88,7 +87,7 @@ where
     /// # Returns
     ///
     /// A `Result` containing the parsed [`arbutus::Tree`], or a [`crate::Error`] if parsing fails.
-    pub fn parse_memory(data: &str) -> Result<Tree<M>, ParseErrorContext> {
+    pub fn parse_memory(data: &str) -> Result<Tree, ParseErrorContext> {
         debug_span!("parser").in_scope(|| {
             let markup = SnowcapParser::<M>::parse(Rule::markup, data)
                 .map_err(|e| {
@@ -107,14 +106,14 @@ where
             let mut parser = Self::default().context((&markup).into());
 
             let mut builder = TreeBuilder::<
-                SnowcapNode<M>,
+                SnowcapNode,
                 ParseError,
                 arbutus::IdGenerator,
-                crate::Node<SnowcapNode<M>, crate::NodeId>,
-                crate::NodeRef<M>,
+                crate::Node<SnowcapNode, crate::NodeId>,
+                crate::NodeRef,
             >::new();
 
-            let root = SnowcapNode::<M>::new(Content::Root);
+            let root = SnowcapNode::new(Content::Root);
 
             builder = builder
                 .root(root, |root| parser.parse_pair(markup, root))
@@ -163,7 +162,7 @@ where
     fn parse_container<'b>(
         &mut self,
         pair: Pair<Rule>,
-        builder: &mut SnowNodeBuilder<'b, M>,
+        builder: &mut SnowNodeBuilder<'b>,
     ) -> Result<(), ParseError> {
         let inner = pair.into_inner();
 
@@ -218,7 +217,7 @@ where
     fn parse_element_list<'b>(
         &mut self,
         pairs: Pairs<Rule>,
-        builder: &mut SnowNodeBuilder<'b, M>,
+        builder: &mut SnowNodeBuilder<'b>,
     ) -> Result<(ElementIdOption, Option<Attributes>), ParseError> {
         let mut attrs = Attributes::default();
         let mut id: Option<String> = None;
@@ -257,7 +256,7 @@ where
     fn parse_row<'b>(
         &mut self,
         pair: Pair<Rule>,
-        builder: &mut SnowNodeBuilder<'b, M>,
+        builder: &mut SnowNodeBuilder<'b>,
     ) -> Result<(), ParseError> {
         let node = SnowcapNode::new(Content::Row);
 
@@ -287,7 +286,7 @@ where
     fn parse_column<'b>(
         &mut self,
         pair: Pair<Rule>,
-        builder: &mut SnowNodeBuilder<'b, M>,
+        builder: &mut SnowNodeBuilder<'b>,
     ) -> Result<(), ParseError> {
         let node = SnowcapNode::new(Content::Column);
 
@@ -317,7 +316,7 @@ where
     fn parse_stack<'b>(
         &mut self,
         pair: Pair<Rule>,
-        builder: &'b mut SnowNodeBuilder<'_, M>,
+        builder: &'b mut SnowNodeBuilder<'_>,
     ) -> Result<(), ParseError> {
         let node = SnowcapNode::new(Content::Stack);
 
@@ -348,7 +347,7 @@ where
     fn parse_widget<'b>(
         &mut self,
         pair: Pair<Rule>,
-        builder: &mut SnowNodeBuilder<'b, M>,
+        builder: &mut SnowNodeBuilder<'b>,
     ) -> Result<(), ParseError> {
         let mut inner = pair.into_inner();
         let label = inner.next().unwrap().as_str().to_string();
@@ -420,7 +419,7 @@ where
     fn parse_module<'b>(
         &mut self,
         pair: Pair<Rule>,
-        builder: &mut SnowNodeBuilder<'b, M>,
+        builder: &mut SnowNodeBuilder<'b>,
     ) -> Result<(), ParseError> {
         // Parse the module
         let module = ModuleParser::parse_str(pair.as_str(), self.context.clone())?;
@@ -437,7 +436,7 @@ where
     pub(crate) fn parse_pair<'b>(
         &mut self,
         pair: Pair<Rule>,
-        builder: &mut SnowNodeBuilder<'b, M>,
+        builder: &mut SnowNodeBuilder<'b>,
     ) -> Result<(), ParseError> {
         self.context = (&pair).into();
 

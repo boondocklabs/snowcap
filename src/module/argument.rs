@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use tracing::warn;
 
-use crate::Value;
+use crate::{
+    parser::{value::ValueParser, ParserContext},
+    Value,
+};
 
 use super::error::ModuleError;
 
@@ -13,6 +16,20 @@ pub struct ModuleArguments {
 }
 
 impl ModuleArguments {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Builder pattern to add arguments using the parser
+    pub fn arg(mut self, arg: &str, value: &str) -> Self {
+        let value = ValueParser::parse_str(value, &ParserContext::default()).unwrap();
+
+        let arg = ModuleArgument::new(arg.to_string(), value);
+        self.insert(arg);
+
+        self
+    }
+
     /// Sort the set of [`ModuleArgument`] items in a determinstic way.
     /// Returns a Vec of the sorted [`ModuleArgument`] items.
     pub fn sort(&self) -> Vec<ModuleArgument> {

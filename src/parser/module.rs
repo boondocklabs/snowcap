@@ -13,12 +13,16 @@ use crate::{
 
 use super::{error::ParseError, ParserContext};
 
-/// Parsed Module from the grammar
+/// Parsed Module from the grammar and tree node representation
 #[derive(Default, Debug, Clone)]
 pub struct Module {
     /// Parser context from the parent parser
     context: Option<ParserContext>,
+
+    /// Module name for locating the module in the global [`ModuleRegistry`]
     name: String,
+
+    /// Module Arguments passed to module instantiation
     args: ModuleArguments,
 
     /// Module Handle ID set after module is instantiated

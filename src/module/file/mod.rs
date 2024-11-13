@@ -5,11 +5,12 @@ use std::path::PathBuf;
 
 use super::data::{ModuleData, ModuleDataKind};
 use super::internal::ModuleInternal;
-use super::{error::ModuleError, message::ModuleMessage, Module, ModuleEvent, ModuleInitData};
+use super::{error::ModuleError, Module, ModuleEvent, ModuleInitData};
 use crate::module::argument::ModuleArguments;
 use async_trait::async_trait;
 use file_format::FileFormat;
 use iced::Task;
+use salish::Message;
 use tokio::fs::File;
 use tokio::{fs, io::AsyncReadExt as _};
 
@@ -73,14 +74,14 @@ impl Module for FileModule {
         Ok(FileEvent::Open(self.path.clone().unwrap()))
     }
 
-    fn on_event(&mut self, event: Self::Event) -> Task<ModuleMessage> {
+    fn on_event(&mut self, event: Self::Event) -> Task<Message> {
         match event {
             FileEvent::Open(path) => Task::perform(
                 async move {
                     let file = File::open(path).await?;
                     Ok(FileEvent::Opened(file))
                 },
-                |result: Result<FileEvent, crate::Error>| ModuleMessage::from(result),
+                |result: Result<FileEvent, crate::Error>| Message::from(result),
             ),
             FileEvent::Opened(mut file) => Task::perform(
                 async move {
@@ -103,7 +104,7 @@ impl Module for FileModule {
 
                     Ok(FileEvent::Loaded(contents))
                 },
-                |result: Result<FileEvent, crate::Error>| ModuleMessage::from(result),
+                |result: Result<FileEvent, crate::Error>| Message::from(result),
             ),
             FileEvent::Loaded(contents) => self.send_data(contents),
         }

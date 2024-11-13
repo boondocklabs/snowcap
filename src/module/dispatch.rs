@@ -1,11 +1,11 @@
+use std::any::Any;
+
 use iced::Task;
+use salish::{filter::SourceFilter, EndpointAddress as _, Message};
 
-use crate::module::argument::ModuleArguments;
+use crate::{module::argument::ModuleArguments, Source};
 
-use super::{
-    data::ModuleData, event::ModuleEvent, message::ModuleMessageContainer, ModuleHandle,
-    ModuleHandleId,
-};
+use super::{data::ModuleData, event::ModuleEvent, ModuleHandle, ModuleHandleId};
 
 /// Module event dispatcher which provides type erasure of the concrete [`ModuleEvent`] type.
 ///
@@ -16,13 +16,23 @@ pub struct ModuleDispatch {
     handle_id: ModuleHandleId,
 
     /// Start the module
-    start: Box<dyn for<'b> FnMut(&'b ModuleArguments) -> Task<ModuleMessageContainer>>,
+    start: Box<dyn for<'b> FnMut(&'b ModuleArguments) -> Task<Message> + Send + Sync>,
 
-    // Closure function that takes a dyn Any of a [`ModuleEvent`] impl
-    // this closure will downcast the Any
-    //event_dispatch: Box<dyn FnMut(Arc<Box<dyn Any + Send + Sync>>) -> Task<ModuleMessage>>,
-    /// Dispatch a message to this module
-    message_dispatch: Box<dyn FnMut(ModuleMessageContainer) -> Task<ModuleMessageContainer>>,
+    /// Vec which holds endpoints created for this module to keep them alive. Once this Vec
+    /// is dropped, all of the endpoints will be deregistered from the [`MessageRouter`]
+    _endpoints: Vec<Box<dyn Any + Send>>,
+}
+
+impl Drop for ModuleDispatch {
+    fn drop(&mut self) {
+        println!("DISPATCHER DROPPED {}", self.handle_id);
+    }
+}
+
+impl std::fmt::Debug for ModuleDispatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModuleDispatch").finish()
+    }
 }
 
 impl ModuleDispatch {
@@ -30,31 +40,45 @@ impl ModuleDispatch {
     /// to provide type erasure of the [`ModuleEvent`] for instantiation and message dispatch.
     /// This allows the dispatcher to be stored in collections of arbitrary module types using `dyn`.
     pub fn new<E: ModuleEvent + 'static, D: ModuleData + 'static>(
-        handle: ModuleHandle<E, D>,
+        handle: ModuleHandle<'static, E, D>,
     ) -> Self {
-        // Create a `message_dispatch` closure to forward a message to the on_message() handler of a module
-        let message_handle = handle.clone();
-        let handle_id = message_handle.id();
-        let message_dispatch = Box::new(move |mut message: ModuleMessageContainer| {
-            let mut module = message_handle.try_module_mut().unwrap();
-            let task = module.handle_message(message_handle.name(), message.take_message());
-            task.map(move |kind| ModuleMessageContainer::new(handle_id, kind))
-        });
-
         let start_handle = handle.clone();
-        let start: Box<dyn for<'b> FnMut(&'b ModuleArguments) -> Task<ModuleMessageContainer>> =
-            Box::new(move |args| {
-                let mut module = start_handle.try_module_mut().unwrap();
-                let task = module.start(start_handle.clone(), args.clone());
+        let handle_id = handle.id();
 
-                // Return the init Task of this module
-                task
+        let router = handle.router().unwrap();
+
+        // Create an event endpoint that calls [`Module::on_event()`] for each event received by the endpoint
+        // This endpoint is registered to receive `ModuleEvent` associated type messages from the specific [`Module`] implementation
+        let event_endpoint = router
+            .create_endpoint::<E>()
+            .filter(SourceFilter::default().add(Source::Module(handle_id)))
+            .message(move |_source, event| {
+                let mut module = handle.try_module_mut().unwrap();
+                module
+                    .on_event(event)
+                    .map(move |m| m.with_source(Source::Module(handle_id)))
             });
 
+        // Get the event endpoint address to pass into [`ModuleInit::start()`].
+        // This address routes events back into the [`Module::on_event()`] method
+        let event_addr = event_endpoint.addr();
+
+        // Keep the endpoints alive in a vec of boxed dyn Any
+        let endpoints: Vec<Box<dyn Any + Send>> = vec![Box::new(event_endpoint)];
+
+        // Create a `start` closure to proxy to [`ModuleInternal::start()`]
+        let start = Box::new(move |args: &ModuleArguments| {
+            let mut module = start_handle.try_module_mut().unwrap();
+            let task = module.start(start_handle.clone(), args.clone(), event_addr);
+
+            // Return the init Task of this module
+            task
+        });
+
         Self {
-            handle_id: handle.id(),
+            handle_id,
             start,
-            message_dispatch,
+            _endpoints: endpoints,
         }
     }
 
@@ -66,15 +90,7 @@ impl ModuleDispatch {
     /// Starts the module, calling [`crate::module::internal::ModuleInternal::start()`]
     /// which returns an [`iced::Task`] which calls into the async fn [`super::Module::init()`]
     /// implemented by the module.
-    pub fn start(&mut self, args: &ModuleArguments) -> Task<ModuleMessageContainer> {
+    pub fn start(&mut self, args: &ModuleArguments) -> Task<Message> {
         (self.start)(args)
-    }
-
-    /// Handle a ModuleMessage destined to this module.
-    pub fn handle_message(
-        &mut self,
-        message: ModuleMessageContainer,
-    ) -> Task<ModuleMessageContainer> {
-        (self.message_dispatch)(message)
     }
 }

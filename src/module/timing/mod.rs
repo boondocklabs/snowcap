@@ -1,17 +1,17 @@
 use async_trait::async_trait;
 use iced::Task;
+use salish::Message;
 use tokio::time::Instant;
 use tokio_stream::wrappers::IntervalStream;
 use tracing::{debug, error};
 
-use crate::{module::argument::ModuleArguments, NodeRef};
-
-use super::{
-    data::ModuleData,
-    error::ModuleError,
-    message::{ModuleMessage, Topic, TopicMessage},
-    Module, ModuleEvent, ModuleInitData,
+use crate::{
+    message::module::{ModuleMessageData, PublishMessage, Topic, TopicMessage},
+    module::argument::ModuleArguments,
+    NodeRef,
 };
+
+use super::{data::ModuleData, error::ModuleError, Module, ModuleEvent, ModuleInitData};
 
 #[derive(Debug)]
 pub struct TimingData;
@@ -72,20 +72,21 @@ impl Module for TimingModule {
         }
     }
 
-    fn init_tree(&mut self, tree: Option<&NodeRef<Self::Event>>) {
+    fn init_tree(&mut self, tree: Option<&NodeRef>) {
         debug!("Initialize tree in Timing module: {tree:#?}");
     }
 
-    fn on_event(&mut self, event: Self::Event) -> Task<ModuleMessage> {
+    fn on_event(&mut self, event: Self::Event) -> Task<Message> {
         match event {
-            TimingEvent::Init(stream) => Task::done(ModuleMessage::Subscribe(Topic("tick"))).chain(
-                Task::run(stream, |_instant| {
-                    ModuleMessage::Publish(super::message::PublishMessage {
-                        topic: Topic("tick"),
-                        message: TopicMessage::Trigger,
-                    })
-                }),
-            ),
+            TimingEvent::Init(stream) => Task::done(Message::broadcast(
+                ModuleMessageData::Subscribe(Topic("tick")),
+            ))
+            .chain(Task::run(stream, |_instant| {
+                Message::broadcast(ModuleMessageData::Publish(PublishMessage {
+                    topic: Topic("tick"),
+                    message: TopicMessage::Trigger,
+                }))
+            })),
             TimingEvent::Tick(instant) => {
                 println!("Timing Module: TICK {instant:?}");
                 Task::none()
@@ -97,11 +98,11 @@ impl Module for TimingModule {
         }
     }
 
-    fn on_message(&mut self, _message: ModuleMessage) -> Task<ModuleMessage> {
+    fn on_message(&mut self, _message: ModuleMessageData) -> Task<ModuleMessageData> {
         Task::none()
     }
 
-    fn on_subscription(&mut self, _topic: Topic, _message: TopicMessage) -> Task<ModuleMessage> {
+    fn on_subscription(&mut self, _topic: Topic, _message: TopicMessage) -> Task<Message> {
         Task::none()
     }
 }

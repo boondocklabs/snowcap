@@ -3,23 +3,45 @@ use std::{
     sync::{atomic::AtomicU64, Arc, LazyLock, Mutex},
 };
 
+use iced::Task;
+use salish::{router::MessageRouter, Message};
 use tracing::{debug, debug_span};
 
 use colored::Colorize as _;
 
+use crate::Source;
+
 use super::{dispatch::ModuleDispatch, error::ModuleError, internal::ModuleInit, Module};
 
+/// Module Handle ID generator. Each constructor closure in [`ModuleDescriptor`] keeps a clone of this
+/// [`AtomicU64`] for allocating a new ID on each module instantiation.
 static MODULE_HANDLE_ID: LazyLock<Arc<AtomicU64>> = LazyLock::new(|| Arc::new(AtomicU64::new(0)));
 
+/// Global Module Registry. Each available module is registered into this registry at runtime
 static MODULE_REGISTRY: LazyLock<Mutex<HashMap<String, ModuleDescriptor>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Type alias for a boxed dyn closure which calls [`ModuleInit::new()`] and returns
 /// a type erased [`ModuleDispatch`] instance to call into the module
-pub type DynModuleNew = Box<dyn Fn() -> ModuleDispatch + Send + Sync + 'static>;
+pub type DynModuleNew = Box<
+    dyn for<'a> Fn(MessageRouter<'static, Task<Message>, Source>) -> ModuleDispatch
+        + Send
+        + Sync
+        + 'static,
+>;
 
+/// Dynamic Module registration descriptor.
+/// Each dynamic module which is available for instantiation has
+/// an associated `ModuleDescriptor` that is inserted into the global
+/// module registry.
+///
+/// Each descriptor contains a boxed closure [`DynModuleNew`] that calls [`ModuleInit::new()`]
+/// of the specific [`Module`] implementation.
 pub struct ModuleDescriptor {
+    /// Name of this module
     pub name: String,
+
+    /// Boxed closure proxying to [`ModuleInit::new()`] of this registered module
     pub new: DynModuleNew,
 }
 
@@ -28,7 +50,7 @@ pub struct ModuleRegistry;
 impl ModuleRegistry {
     /// Register a [`ModuleDescriptor`] with the global module registry
     pub fn register_descriptor(descriptor: ModuleDescriptor) {
-        if let Ok(mut registry) = MODULE_REGISTRY.try_lock() {
+        if let Ok(mut registry) = MODULE_REGISTRY.lock() {
             registry.insert(descriptor.name.clone(), descriptor);
         } else {
             panic!("Failed to get module registry");
@@ -47,32 +69,42 @@ impl ModuleRegistry {
 
             let name = String::from(name);
 
+            // Clone the module handle ID generator to move into the module constructor closure
+            let idgen = MODULE_HANDLE_ID.clone();
+
+            // Clone the module name to move into the module constructor closure
+            let module_name = name.clone();
+
             // Create a closure to proxy to the non-object safe ModuleInit::new(),
             // returning a type erased dispatcher
-            let idgen = MODULE_HANDLE_ID.clone();
-            let module_name = name.clone();
-            let module_new = Box::new(move || {
-                let id = idgen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let module_new: DynModuleNew = Box::new(move |router| {
+                {
+                    // Get a new module ID from the cloned AtomicU64 monotonic counter
+                    let id = idgen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-                // Call ModuleInit::new() to get a ModuleHandle
-                let handle = T::new(module_name.clone(), id);
+                    // Call ModuleInit::new() to get a ModuleHandle
+                    let handle = T::new(module_name.clone(), id).with_router(router);
 
-                // Create a dispatcher for type erasure
-                let dispatcher = ModuleDispatch::new(handle);
+                    // Create a dispatcher for type erasure
+                    let dispatcher = ModuleDispatch::new(handle);
 
-                // Return the dispatcher
-                dispatcher
+                    // Return the dispatcher
+                    dispatcher
+                }
             });
 
+            // Create a [`ModuleDescriptor`] for this module registration
             let descriptor = ModuleDescriptor {
                 name,
                 new: module_new,
             };
 
+            // Insert the descriptor into the global module registry
             ModuleRegistry::register_descriptor(descriptor);
         })
     }
 
+    /// Get a module from the registry by name
     pub fn get<R, F>(name: &str, f: F) -> Result<R, ModuleError>
     where
         F: FnOnce(&ModuleDescriptor) -> Result<R, ModuleError>,
@@ -88,49 +120,3 @@ impl ModuleRegistry {
         }
     }
 }
-
-/*
-#[derive(EnumString, strum::Display)]
-#[strum(ascii_case_insensitive)]
-pub enum ModuleKind {
-    Timing,
-    Http,
-}
-
-impl ModuleManager {
-    /// Create an internal module from the registry
-    pub fn internal(&mut self, kind: ModuleKind) -> HandleId {
-        match kind {
-            ModuleKind::Timing => self.create::<super::timing::TimingModule>(),
-            ModuleKind::Http => self.create::<super::http::HttpModule>(),
-        }
-    }
-
-    pub fn from_string(name: &str) -> Result<ModuleKind, ModuleError> {
-        match ModuleKind::from_str(name) {
-            Ok(kind) => Ok(kind),
-            Err(_e) => Err(ModuleError::Unknown(name.into())),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::module::manager::ModuleManager;
-
-    #[test]
-    fn from_string() {
-        let res = ModuleManager::from_string("notexist".into());
-        assert!(res.is_err());
-
-        let res = ModuleManager::from_string("timing".into());
-        assert!(res.is_ok());
-
-        let res = ModuleManager::from_string("Timing".into());
-        assert!(res.is_ok());
-
-        let res = ModuleManager::from_string("TIMING".into());
-        assert!(res.is_ok());
-    }
-}
-*/

@@ -1,6 +1,7 @@
 //! Tree Node containers for [`arbutus`] trees
 
 use colored::Colorize;
+use parking_lot::Mutex;
 use std::string::ToString;
 
 use std::sync::Arc;
@@ -12,7 +13,6 @@ use std::{
 use strum::{EnumDiscriminants, EnumIter};
 use xxhash_rust::xxh64::Xxh64;
 
-use crate::dynamic_widget::DynamicWidget;
 use crate::module::data::ModuleData;
 use crate::parser::module::Module;
 use crate::{attribute::Attributes, Value};
@@ -61,32 +61,31 @@ pub enum State {
 
 /// Snowcap tree node. This is the node type used in the [`Arbutus`](https://github.com/boondocklabs/arbutus) tree
 /// which is built by the markup parser
-pub struct SnowcapNode<M>
-where
-    M: 'static,
-{
+pub struct SnowcapNode {
     pub element_id: Option<String>,
     pub attrs: Attributes,
     content: Content,
-    pub widget: Option<DynamicWidget<M>>,
+
+    // Removing this from SnowcapNode, as it is not Send + Sync
+    //pub widget: Option<DynamicWidget<M>>,
     state: State,
-    module_data: Option<Arc<Box<dyn ModuleData>>>,
+    module_data: Option<Box<dyn ModuleData>>,
 }
 
-impl<M> Clone for SnowcapNode<M> {
+impl Clone for SnowcapNode {
     fn clone(&self) -> Self {
         SnowcapNode {
             element_id: self.element_id.clone(),
             attrs: self.attrs.clone(),
             content: self.content.clone(),
-            widget: None,
+            //widget: None,
             state: State::New,
             module_data: None,
         }
     }
 }
 
-impl<M> std::hash::Hash for SnowcapNode<M> {
+impl std::hash::Hash for SnowcapNode {
     fn hash<H: Hasher>(&self, state: &mut H) {
         //tracing::info!("Hashing SnowcapNode {}", self.data.to_string());
         self.element_id.hash(state);
@@ -95,7 +94,7 @@ impl<M> std::hash::Hash for SnowcapNode<M> {
     }
 }
 
-impl<M> std::fmt::Display for SnowcapNode<M> {
+impl std::fmt::Display for SnowcapNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let attr_display = if self.attrs.len() > 0 {
             format!("{:?}", self.attrs)
@@ -112,23 +111,20 @@ impl<M> std::fmt::Display for SnowcapNode<M> {
     }
 }
 
-impl<M> Default for SnowcapNode<M> {
+impl Default for SnowcapNode {
     fn default() -> Self {
         Self {
             content: Content::default(),
             element_id: None,
             attrs: Attributes::default(),
-            widget: None,
+            //widget: None,
             state: State::New,
             module_data: None,
         }
     }
 }
 
-impl<M> std::fmt::Debug for SnowcapNode<M>
-where
-    M: std::fmt::Debug,
-{
+impl std::fmt::Debug for SnowcapNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(element_id) = &self.element_id {
             write!(f, "[{element_id:?}] ")?
@@ -137,7 +133,7 @@ where
     }
 }
 
-impl<M> SnowcapNode<M> {
+impl SnowcapNode {
     pub fn new(content: Content) -> Self {
         Self::default().with_content(content)
     }
@@ -197,21 +193,22 @@ impl<M> SnowcapNode<M> {
         &mut self.content
     }
 
-    /// Set the module data for this node. When a module sends a data message,
-    /// this field will be overwritten with the latest data from the module.
-    pub fn set_module_data(&mut self, data: Arc<Box<dyn ModuleData>>) {
+    /// Set the Module Data for this node
+    pub fn set_module_data(&mut self, data: Box<dyn ModuleData + 'static>) {
         self.module_data = Some(data);
+
+        // Mark the node as dirty
         self.set_dirty(true);
     }
 
-    /// Get module data from this node
-    pub fn module_data(&self) -> Option<&Arc<Box<dyn ModuleData>>> {
+    /// Get a reference to the Module Data associated with this Node
+    pub fn module_data(&self) -> Option<&Box<dyn ModuleData>> {
         self.module_data.as_ref()
     }
 }
 
 /// Deref into the inner [`Content`]
-impl<M> Deref for SnowcapNode<M> {
+impl Deref for SnowcapNode {
     type Target = Content;
 
     fn deref(&self) -> &Self::Target {

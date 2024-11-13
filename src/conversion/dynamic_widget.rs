@@ -4,13 +4,13 @@ use tracing::debug;
 use tracing::debug_span;
 
 use crate::cache::WidgetContent;
-use crate::{message::WidgetMessage, ConversionError, DynamicWidget, NodeId, NodeRef};
+use crate::{message::widget::WidgetMessage, ConversionError, DynamicWidget, NodeRef};
 
 use super::widget::SnowcapWidget;
 
 impl<'a, M> DynamicWidget<M>
 where
-    M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
+    M: Clone + std::fmt::Debug + From<WidgetMessage> + 'static,
 {
     /*
     fn content_single<'b>(
@@ -41,7 +41,7 @@ where
     */
 
     pub fn builder(
-        node: NodeRef<M>,
+        node: NodeRef,
         _content: WidgetContent<M>,
     ) -> Result<DynamicWidget<M>, ConversionError> {
         debug_span!("DynamicWidget").in_scope(|| {

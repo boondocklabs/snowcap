@@ -19,6 +19,9 @@ pub mod timing;
 
 pub mod data;
 
+#[cfg(test)]
+mod tests;
+
 use async_trait::async_trait;
 use data::ModuleData;
 use error::ModuleError;
@@ -29,9 +32,13 @@ use iced::{
     Task,
 };
 use internal::ModuleInternal;
-use message::{ModuleMessage, Topic, TopicMessage};
+use salish::Message;
 
-use crate::{module::argument::ModuleArguments, NodeRef};
+use crate::{
+    message::module::{ModuleMessageData, Topic, TopicMessage},
+    module::argument::ModuleArguments,
+    NodeRef,
+};
 
 /// Module instance handle ID
 pub(crate) type ModuleHandleId = u64;
@@ -41,18 +48,16 @@ pub(crate) type DynModule<E, D> = Box<dyn ModuleInternal<Event = E, Data = D>>;
 
 mod internal {
     //! Sealed Module traits for initializing modules, and dispatching messages
-    use std::sync::Arc;
 
-    use crate::{ConversionError, Error};
+    use crate::{message::module::ModuleMessageData, Error, Source};
 
     use super::{
-        argument::ModuleArguments,
-        handle::ModuleHandle,
-        message::{ModuleMessage, ModuleMessageContainer},
+        argument::ModuleArguments, data::ModuleData, handle::ModuleHandle, message::ModuleMessage,
         Module, ModuleHandleId, ModuleInitData,
     };
     use iced::Task;
-    use tracing::{debug, debug_span, Instrument as _};
+    use salish::{message::Destination, Message};
+    use tracing::{debug, debug_span, instrument, trace, Instrument as _};
 
     /// Module startup, and dynamic dispatch of [`ModuleMessage`] from [`crate::module::dispatch::ModuleDispatch`] instances
     /// associated with each instantiation of this [`Module`]
@@ -63,9 +68,10 @@ mod internal {
         /// and returns an async Task to the iced runtime to call the async module init() method.
         fn start(
             &mut self,
-            handle: ModuleHandle<Self::Event, Self::Data>,
+            handle: ModuleHandle<'static, Self::Event, Self::Data>,
             args: ModuleArguments,
-        ) -> Task<ModuleMessageContainer>
+            event_addr: u64,
+        ) -> Task<Message>
         where
             Self::Event: 'static,
         {
@@ -75,13 +81,10 @@ mod internal {
 
             // Perform synchronous module initialization
             span.in_scope(|| {
-                self.init_tree(handle.subtree());
+                //self.init_tree(handle.subtree());
             });
 
             let module_name = handle.name().clone();
-
-            // Convert the handle into a raw handle that can cross await boundaries
-            let handle = handle.into_raw();
 
             Task::future(
                 async move {
@@ -99,14 +102,24 @@ mod internal {
                                 .await;
 
                             match result {
-                                Ok(event) => ModuleMessageContainer::from((handle_id, event)),
-                                Err(e) => ModuleMessageContainer::new(
+                                Ok(event) => {
+                                    println!("RECEIVED EVENT DURING STARTUP");
+                                    Message::unicast(event)
+                                        .with_dest(Destination::Endpoint(event_addr))
+                                        .with_source(Source::Module(handle_id))
+                                }
+                                Err(e) => Message::broadcast(ModuleMessage::new(
                                     handle_id,
-                                    ModuleMessage::Error(Arc::new(Box::new(Error::from(e)))),
-                                ),
+                                    Message::unicast(Box::new(Error::from(e))),
+                                ))
+                                .with_source(Source::Module(handle_id)),
                             }
                         }
-                        Err(e) => ModuleMessageContainer::from((handle_id, crate::Error::from(e))),
+                        Err(e) => Message::broadcast(ModuleMessage::new(
+                            handle_id,
+                            Message::unicast(Box::new(crate::Error::from(e)))
+                                .with_source(Source::Module(handle_id)),
+                        )),
                     }
                 }
                 .instrument(span),
@@ -114,52 +127,67 @@ mod internal {
         }
 
         /// Handle an incoming message sent to this module instance from the dispatcher
+        #[instrument(name = "module")]
         fn handle_message(
             &mut self,
             module_name: &String,
-            message: ModuleMessage,
-        ) -> Task<ModuleMessage>
+            message: ModuleMessageData,
+        ) -> Task<ModuleMessageData>
         where
             Self::Event: 'static,
         {
-            debug_span!("module", module = module_name).in_scope(|| {
-                match message {
-                    ModuleMessage::Event(event) => {
-                        let event = Arc::into_inner(event).unwrap();
+            trace!("{:?}", message);
+            /*
+            match message {
+                ModuleMessageData::Event(event) => {
+                    let event = Arc::into_inner(event).unwrap();
 
-                        // Downcast the event back to the concrete type
-                        match event.downcast::<Self::Event>() {
-                            Ok(event) => {
-                                debug!("on_event {:?}", event);
-                                self.on_event(*event)
-                            }
-                            Err(e) => {
-                                tracing::error!(
-                                    "Unexpected event type attempting to downcast: {e:?}"
-                                );
+                    // Downcast the event back to the concrete type specified by the
+                    // associated type [`Module::Event`] from the module implementation.
 
-                                // Create a task that emits a module error message
-                                Task::done(ModuleMessage::from(Error::from(
-                                    ConversionError::Downcast("unexpected ModuleEvent type".into()),
-                                )))
-                            }
+                    match event.downcast::<Self::Event>() {
+                        Ok(event) => {
+                            debug!("on_event {:?}", event);
+                            self.on_event(*event)
+                        }
+                        Err(e) => {
+                            tracing::error!("Unexpected event type attempting to downcast: {e:?}");
+
+                            // Create a task that emits a module error message
+                            Task::done(ModuleMessageData::from(Error::from(
+                                ConversionError::Downcast("unexpected ModuleEvent type".into()),
+                            )))
                         }
                     }
-                    ModuleMessage::Published(publish_message) => {
-                        debug!("on_subscription {}", publish_message);
-                        self.on_subscription(publish_message.topic, publish_message.message)
-                    }
-                    _ => {
-                        debug!("on_message {:?}", message);
-                        self.on_message(message)
-                    }
                 }
-            })
+                ModuleMessageData::Published(publish_message) => {
+                    debug!("on_subscription {}", publish_message);
+                    self.on_subscription(
+                        publish_message.topic.clone(),
+                        publish_message.message.clone(),
+                    )
+                }
+                _ => {
+                    debug!("on_message {:?}", message);
+                    self.on_message(message)
+                }
+            }
+            */
+
+            Task::none()
         }
 
         /// Get a Task to send data from this module to the Snowcap engine
-        fn send_data(&self, data: Self::Data) -> Task<ModuleMessage> {
-            Task::done(ModuleMessage::Data(Arc::new(Box::new(data))))
+        fn send_data(&self, data: Self::Data) -> Task<Message> {
+            let data: Box<dyn ModuleData> = Box::new(data);
+            Task::done(Message::unicast(data))
+        }
+
+        fn event(&self, event: Self::Event) -> Task<Self::Event>
+        where
+            Self::Event: 'static,
+        {
+            Task::done(event)
         }
     }
 
@@ -168,7 +196,7 @@ mod internal {
     /// dispatcher.
     pub trait ModuleInit: Default + Sized + Module + 'static {
         /// Instantiate this module
-        fn new(name: String, id: ModuleHandleId) -> ModuleHandle<Self::Event, Self::Data> {
+        fn new(name: String, id: ModuleHandleId) -> ModuleHandle<'static, Self::Event, Self::Data> {
             ModuleHandle::new(name, id, Self::default())
         }
 
@@ -184,10 +212,10 @@ mod internal {
     }
 }
 
-/// Implement on ModuleInit on anything implementing Module
+/// Implement [`ModuleInit`] on anything implementing [`Module`]
 impl<T> internal::ModuleInit for T where T: Module + Default + 'static {}
 
-/// Implement on ModuleInternal on anything implementing Module
+/// Implement [`ModuleInternal`] on anything implementing [`Module`]
 impl<T> internal::ModuleInternal for T where T: Module {}
 
 /// Data passed to module init method
@@ -210,19 +238,19 @@ pub trait Module: MaybeSend + MaybeSync + std::fmt::Debug {
         init_data: ModuleInitData,
     ) -> Result<Self::Event, ModuleError>;
 
-    fn init_tree(&mut self, _tree: Option<&NodeRef<Self::Event>>) {}
+    fn init_tree(&mut self, _tree: Option<&NodeRef>) {}
 
     /// Called when a [`ModuleEvent`] is received for this module.
     /// This is used for intra-module communication, using the associated
     /// type [`Module::Event`] defined by the module implementation.
     ///
     /// An [`iced::Task`] must be returned in response to the message,
-    /// which may emit [`ModuleMessage`] messages, which will be dispatched
+    /// which may emit [`salish::Message`] messages, which will be dispatched
     /// by the [`crate::Snowcap`] engine.
     ///
     /// If no work needs to be done in response
     /// to the message, return [`iced::Task::none()`]
-    fn on_event(&mut self, _event: Self::Event) -> Task<ModuleMessage> {
+    fn on_event(&mut self, _event: Self::Event) -> Task<Message> {
         Task::none()
     }
 
@@ -236,7 +264,7 @@ pub trait Module: MaybeSend + MaybeSync + std::fmt::Debug {
     ///
     /// If no work needs to be done in response
     /// to the message, return [`iced::Task::none()`]
-    fn on_subscription(&mut self, _topic: Topic, _message: TopicMessage) -> Task<ModuleMessage> {
+    fn on_subscription(&mut self, _topic: Topic, _message: TopicMessage) -> Task<Message> {
         Task::none()
     }
 
@@ -250,7 +278,7 @@ pub trait Module: MaybeSend + MaybeSync + std::fmt::Debug {
     ///
     /// If no work needs to be done in response
     /// to the message, return [`iced::Task::none()`]
-    fn on_message(&mut self, _message: ModuleMessage) -> Task<ModuleMessage> {
+    fn on_message(&mut self, _message: ModuleMessageData) -> Task<ModuleMessageData> {
         Task::none()
     }
 }

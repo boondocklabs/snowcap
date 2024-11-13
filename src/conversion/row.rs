@@ -3,8 +3,6 @@ use crate::{
     cache::WidgetContent,
     dynamic_widget::DynamicWidget,
     error::ConversionError,
-    message::WidgetMessage,
-    NodeId,
 };
 use iced::widget::Row;
 use tracing::warn;
@@ -17,7 +15,7 @@ impl SnowcapRow {
         contents: WidgetContent<M>,
     ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
+        M: std::fmt::Debug + 'static,
     {
         let mut row = Row::with_children(contents);
 

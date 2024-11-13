@@ -41,6 +41,8 @@ async-trait = "0.1.83"
 tokio-stream = "0.1.16"
 duration-str = "0.11.2"
 
+salish = { path = "../salish" }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 notify = "6.1.1"
 tree_magic_mini = "3.1.5"
@@ -49,3 +51,10 @@ tokio = { version = "1.40.0", features = ["fs"] }
 [dev-dependencies]
 approx = "0.5.1"
 tracing-test = { version = "0.2.5", features = ["no-env-filter"] }
+
+# In order to run tests with an iced application context,
+# we need to disable the internal harness so we can run on the main thread
+[[test]]
+name = "app-tests"
+path = "app-tests/main.rs"
+harness = false

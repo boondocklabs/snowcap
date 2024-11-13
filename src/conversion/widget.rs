@@ -7,12 +7,13 @@ use iced::widget::{
     Button, PickList, Rule, Scrollable, Slider, Space, Themer, Toggler, VerticalSlider,
 };
 use iced::widget::{Image, Svg, Text};
+use salish::Message;
 use tracing::warn;
 
 use crate::attribute::Attributes;
 use crate::dynamic_widget::DynamicWidget;
 use crate::error::ConversionError;
-use crate::message::WidgetMessage;
+use crate::message::widget::{WidgetEvent, WidgetMessage};
 
 pub struct SnowcapWidget;
 
@@ -23,16 +24,13 @@ impl SnowcapWidget {
             .with_node_id(8989898)
     }
 
-    pub fn new<'a, M>(
+    pub fn new<'a>(
         node_id: NodeId,
         name: String,
         element_id: Option<String>,
         attrs: Attributes,
-        content: WidgetContent<M>,
-    ) -> Result<DynamicWidget<M>, ConversionError>
-    where
-        M: Clone + std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
-    {
+        content: WidgetContent<Message>,
+    ) -> Result<DynamicWidget<Message>, ConversionError> {
         match name.as_str() {
             "image" => match content {
                 WidgetContent::Module(module) => {
@@ -75,13 +73,21 @@ impl SnowcapWidget {
 
                     let settings = iced::widget::markdown::Settings::default();
 
-                    let markdown = iced::widget::markdown(&items, settings, style)
-                        .map(move |url| M::from((node_id, WidgetMessage::Markdown(url))));
-                    let wrapped = ElementWrapper::<M>::new(markdown);
+                    let markdown =
+                        iced::widget::markdown(&items, settings, style).map(move |url| {
+                            Message::broadcast(WidgetMessage::new(
+                                node_id,
+                                element_id.clone(),
+                                WidgetEvent::Markdown(url),
+                            ))
+                        });
+
+                    let wrapped = ElementWrapper::<Message>::new(markdown);
                     Ok(DynamicWidget::default().with_widget(wrapped))
                 }
                 _ => Err(ConversionError::InvalidType(format!(
-                    "Markdown expecting WidgetContent::Markdown {}:{}",
+                    "Markdown expecting WidgetContent::Markdown. Got {:?} {}:{}",
+                    content,
                     file!(),
                     line!()
                 ))),
@@ -173,7 +179,11 @@ impl SnowcapWidget {
 
             "button" => {
                 let mut button = Button::new(content).on_press_with(move || {
-                    M::from((node_id, WidgetMessage::ButtonPress(element_id.clone())))
+                    Message::broadcast(WidgetMessage::new(
+                        node_id,
+                        element_id.clone(),
+                        WidgetEvent::ButtonPress,
+                    ))
                 });
 
                 for attr in attrs {
@@ -203,20 +213,19 @@ impl SnowcapWidget {
 
                 let _element_id = element_id.clone();
                 let _attrs = attrs.clone();
-                let mut slider = Slider::<i32, M>::new(0..=32768, value, move |val| {
+                let mut slider = Slider::<i32, Message>::new(0..=32768, value, move |val| {
                     _attrs.set(AttributeValue::SliderValue(val)).unwrap();
 
-                    M::from((
+                    Message::broadcast(WidgetMessage::new(
                         node_id,
-                        WidgetMessage::SliderChanged {
-                            element_id: _element_id.clone(),
-                            value: val,
-                        },
+                        _element_id.clone(),
+                        WidgetEvent::SliderChanged(val),
                     ))
                 })
-                .on_release(M::from((
+                .on_release(Message::broadcast(WidgetMessage::new(
                     node_id,
-                    WidgetMessage::SliderReleased { element_id, value },
+                    element_id.clone(),
+                    WidgetEvent::SliderReleased(value),
                 )));
 
                 for attr in attrs {
@@ -242,21 +251,21 @@ impl SnowcapWidget {
 
                 let _element_id = element_id.clone();
                 let _attrs = attrs.clone();
-                let mut slider = VerticalSlider::<i32, M>::new(0..=32768, value, move |val| {
-                    _attrs.set(AttributeValue::SliderValue(val)).unwrap();
+                let mut slider =
+                    VerticalSlider::<i32, Message>::new(0..=32768, value, move |val| {
+                        _attrs.set(AttributeValue::SliderValue(val)).unwrap();
 
-                    M::from((
+                        Message::broadcast(WidgetMessage::new(
+                            node_id,
+                            _element_id.clone(),
+                            WidgetEvent::SliderChanged(val),
+                        ))
+                    })
+                    .on_release(Message::broadcast(WidgetMessage::new(
                         node_id,
-                        WidgetMessage::SliderChanged {
-                            element_id: _element_id.clone(),
-                            value: val,
-                        },
-                    ))
-                })
-                .on_release(M::from((
-                    node_id,
-                    WidgetMessage::SliderReleased { element_id, value },
-                )));
+                        element_id,
+                        WidgetEvent::SliderReleased(value),
+                    )));
 
                 for attr in attrs {
                     slider = match *attr {
@@ -274,13 +283,10 @@ impl SnowcapWidget {
                 if let WidgetContent::Widget(widget) = content {
                     let mut scroll = Scrollable::new(widget.into_element().unwrap()).on_scroll(
                         move |viewport| {
-                            println!("ON SCROLL {viewport:?}");
-                            M::from((
+                            Message::broadcast(WidgetMessage::new(
                                 node_id,
-                                WidgetMessage::Scrolled {
-                                    element_id: element_id.clone(),
-                                    viewport,
-                                },
+                                element_id.clone(),
+                                WidgetEvent::Scrolled(viewport),
                             ))
                         },
                     );
@@ -319,12 +325,10 @@ impl SnowcapWidget {
                 let _attrs = attrs.clone();
                 let mut toggler = Toggler::new(is_toggled).on_toggle(move |toggled| {
                     _attrs.set(AttributeValue::Toggled(toggled)).unwrap();
-                    M::from((
+                    Message::broadcast(WidgetMessage::new(
                         node_id,
-                        WidgetMessage::Toggler {
-                            element_id: element_id.clone(),
-                            toggled,
-                        },
+                        element_id.clone(),
+                        WidgetEvent::Toggler(toggled),
                     ))
                 });
 
@@ -376,12 +380,10 @@ impl SnowcapWidget {
                             .set(AttributeValue::Selected(selected.clone()))
                             .unwrap();
 
-                        M::from((
+                        Message::broadcast(WidgetMessage::new(
                             node_id,
-                            WidgetMessage::PickListSelected {
-                                element_id: element_id.clone(),
-                                selected,
-                            },
+                            element_id.clone(),
+                            WidgetEvent::PickListSelected(selected),
                         ))
                     });
 

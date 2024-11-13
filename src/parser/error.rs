@@ -142,7 +142,7 @@ mod tests {
 
     use crate::{Message, SnowcapParser};
 
-    type M = Message<String>;
+    type M = Message;
 
     #[traced_test]
     #[test]
@@ -150,10 +150,6 @@ mod tests {
         let res = SnowcapParser::<M>::parse_memory(
             r#"
             {
-
-
-
-
             {}
             "#,
         );

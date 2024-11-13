@@ -2,13 +2,15 @@
 
 use super::data::{ModuleData, ModuleDataKind};
 use super::internal::ModuleInternal;
-use super::{error::ModuleError, message::ModuleMessage, Module, ModuleEvent, ModuleInitData};
+use super::{error::ModuleError, Module, ModuleEvent, ModuleInitData};
+use crate::message::module::ModuleMessageData;
 use crate::module::argument::ModuleArguments;
 use crate::Value;
 use async_trait::async_trait;
 use iced::Task;
 use reqwest::Url;
 use reqwest::{header, Client, Method};
+use salish::Message;
 use thiserror::Error;
 use tracing::{debug, error};
 
@@ -35,7 +37,7 @@ pub struct HttpData {
 impl std::fmt::Debug for HttpData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HttpData")
-            .field("url", &self.url)
+            .field("url", &self.url.to_string())
             .field("kind", &self.kind)
             .field("length", &self.data.len())
             .finish()
@@ -105,7 +107,7 @@ impl Module for HttpModule {
         Ok(HttpEvent::StartRequest)
     }
 
-    fn on_event(&mut self, event: Self::Event) -> Task<ModuleMessage> {
+    fn on_event(&mut self, event: Self::Event) -> Task<Message> {
         match event {
             HttpEvent::StartRequest => {
                 let client = self.client.as_ref().unwrap().clone();
@@ -120,7 +122,7 @@ impl Module for HttpModule {
                             .build()?;
                         Ok(HttpEvent::Request(req))
                     },
-                    |result: Result<HttpEvent, HttpError>| ModuleMessage::from(result),
+                    |result: Result<HttpEvent, HttpError>| Message::from(result),
                 )
             }
 
@@ -132,7 +134,7 @@ impl Module for HttpModule {
 
                         Ok(HttpEvent::Response(response))
                     },
-                    |result: Result<HttpEvent, HttpError>| ModuleMessage::from(result),
+                    |result: Result<HttpEvent, HttpError>| Message::from(result),
                 )
             }
 
@@ -157,7 +159,7 @@ impl Module for HttpModule {
 
                                 Ok(HttpEvent::Data(data))
                             },
-                            |result: Result<HttpEvent, HttpError>| ModuleMessage::from(result),
+                            |result: Result<HttpEvent, HttpError>| Message::from(result),
                         ),
                         mime::TEXT => Task::perform(
                             async move {
@@ -171,7 +173,7 @@ impl Module for HttpModule {
 
                                 Ok(HttpEvent::Data(data))
                             },
-                            |result: Result<HttpEvent, HttpError>| ModuleMessage::from(result),
+                            |result: Result<HttpEvent, HttpError>| Message::from(result),
                         ),
                         _ => {
                             error!("Unknown content type {content_type:?}");
@@ -189,7 +191,7 @@ impl Module for HttpModule {
         }
     }
 
-    fn on_message(&mut self, message: ModuleMessage) -> Task<ModuleMessage> {
+    fn on_message(&mut self, message: ModuleMessageData) -> Task<ModuleMessageData> {
         println!("HTTP on_message {message:#?}");
         Task::none()
     }

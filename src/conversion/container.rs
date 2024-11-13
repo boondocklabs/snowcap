@@ -1,10 +1,7 @@
-use crate::{attribute::AttributeValue, cache::WidgetContent, NodeId};
+use crate::{attribute::AttributeValue, cache::WidgetContent};
 use iced::widget::Container;
 
-use crate::{
-    attribute::Attributes, dynamic_widget::DynamicWidget, error::ConversionError,
-    message::WidgetMessage,
-};
+use crate::{attribute::Attributes, dynamic_widget::DynamicWidget, error::ConversionError};
 
 pub struct SnowcapContainer;
 
@@ -14,7 +11,7 @@ impl SnowcapContainer {
         content: WidgetContent<M>,
     ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
+        M: std::fmt::Debug + 'static,
     {
         let mut container = Container::new(content);
         let mut style = iced::widget::container::Style::default();

@@ -100,11 +100,15 @@ mod dynamic_widget;
 mod error;
 //mod event;
 mod cache;
-mod message;
+pub mod message;
 pub mod module;
 mod node;
 mod parser;
+//mod router;
 mod util;
+mod watcher;
+
+pub use message::module::*;
 
 use arbutus::TreeDiff;
 use arbutus::TreeNode as _;
@@ -113,88 +117,91 @@ use dynamic_widget::DynamicWidget;
 
 // Re-export iced
 pub use iced;
-use iced::advanced::graphics::futures::MaybeSend;
 use iced::Task;
 
 use cache::WidgetCache;
 use message::Command;
-use message::Event;
-use message::MessageDiscriminants;
-use message::WidgetMessage;
 use module::manager::ModuleManager;
-use module::message::ModuleMessage;
+use module::ModuleHandleId;
 use node::SnowcapNode;
 use parking_lot::Mutex;
-use tracing::info_span;
-use tracing::warn;
+use salish::endpoint::Endpoint;
+use salish::router::MessageRouter;
+use watcher::FileWatcher;
 
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub use conversion::theme::SnowcapTheme;
 pub use error::*;
-pub use message::Message;
-
-/*
-use iced::futures;
-use iced::futures::SinkExt;
-#[cfg(not(target_arch = "wasm32"))]
-use notify::FsEventWatcher;
-#[cfg(not(target_arch = "wasm32"))]
-use notify::RecommendedWatcher;
-#[cfg(not(target_arch = "wasm32"))]
-use notify::Watcher;
-*/
+pub use salish::Message;
 
 pub use parser::SnowcapParser;
 pub use parser::Value;
 
-use tracing::debug;
 use tracing::error;
 use tracing::info;
 
-type Node<Data, Id> = arbutus::node::rc::Node<Data, Id>;
-type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
+//type Node<Data, Id> = arbutus::node::rc::Node<Data, Id>;
+//type NodeRef<M> = arbutus::noderef::rc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
 
-/*
 type Node<Data, Id> = arbutus::node::arc::Node<Data, Id>;
-type NodeRef<M> = arbutus::noderef::arc::NodeRef<Node<SnowcapNode<M>, arbutus::NodeId>>;
-*/
+type NodeRef = arbutus::noderef::arc::NodeRef<Node<SnowcapNode, arbutus::NodeId>>;
 
-type Tree<M> = arbutus::Tree<NodeRef<M>>;
-type IndexedTree<M> = arbutus::IndexedTree<NodeRef<M>>;
+type Tree = arbutus::Tree<NodeRef>;
+type IndexedTree = arbutus::IndexedTree<NodeRef>;
 type NodeId = arbutus::NodeId;
+
+#[derive(Debug, Clone, Copy, Hash)]
+pub enum Source {
+    Module(ModuleHandleId),
+}
 
 /// Top level Snowcap Engine which manages loading and parsing grammar into an [`Arbutus`](https://github.com/boondocklabs/arbutus) tree.
 /// Provides the update() and view()
-pub struct Snowcap<AppMessage>
-where
-    AppMessage: Clone + std::fmt::Debug + 'static,
-{
+pub struct Snowcap {
     #[cfg(not(target_arch = "wasm32"))]
     filename: Option<PathBuf>,
+    tree: Arc<Mutex<Option<IndexedTree>>>,
+    modules: Rc<RefCell<ModuleManager>>,
+    watcher: Option<FileWatcher>,
 
-    tree: Arc<Mutex<Option<IndexedTree<Message<AppMessage>>>>>,
+    router: MessageRouter<'static, Task<salish::message::Message>, Source>,
 
-    modules: ModuleManager,
+    cache: Rc<RefCell<WidgetCache>>,
+
+    _command_endpoint: Endpoint<'static, Command, Task<Message>, Source>,
 }
 
-impl<AppMessage> Snowcap<AppMessage>
-where
-    AppMessage: Clone + MaybeSend + std::fmt::Debug,
-{
+impl Snowcap {
     /// Create a new Snowcap Engine instance
     pub fn new() -> Result<Self, Error> {
-        let tree = Arc::new(Mutex::new(None));
+        let router = MessageRouter::<Task<Message>, Source>::new();
 
-        let modules = ModuleManager::new();
+        let tree = Arc::new(Mutex::new(None));
+        let modules = Rc::new(RefCell::new(ModuleManager::new(router.clone())));
+
+        let command_endpoint = router
+            .create_endpoint::<Command>()
+            .message(|source, command| match command {
+                Command::Shutdown => {
+                    println!("Shutdown command received from {source:?}");
+                    iced::exit()
+                }
+                Command::Reload => todo!(),
+            });
 
         let snow = Self {
             tree,
             #[cfg(not(target_arch = "wasm32"))]
             filename: None,
-
             modules,
+            watcher: None,
+            router,
+            _command_endpoint: command_endpoint,
+            cache: Rc::new(RefCell::new(WidgetCache::default())),
         };
 
         Ok(snow)
@@ -203,22 +210,25 @@ where
     /// Engine initialization, called by [`iced::Application`].
     /// Traverses the tree to build widgets, and gets an init [`iced::Task`]
     /// from each instantiated [`module`] in the tree.
-    pub fn init(&mut self) -> Task<Message<AppMessage>> {
+    pub fn init(&mut self) -> Task<Message> {
         let mut tasks = Vec::new();
 
-        /*
-        // Start the event listener task
-        tasks.push(Task::run(self.event_endpoint.take_outlet(), |ep_message| {
-            info!("Received event from inlet {}", ep_message.from());
-            Message::<AppMessage>::Event(ep_message.into_inner())
-        }));
-        */
+        let (watcher, watcher_task) = FileWatcher::new();
+
+        self.watcher = Some(watcher);
+
+        tasks.push(watcher_task);
+
+        if let Some(filename) = &self.filename {
+            self.watcher.as_mut().unwrap().watch(filename).unwrap();
+        }
 
         // Run the initial tree update, and get any tasks (Provider init tasks)
         let tree_task = if let Some(tree) = &*self.tree.lock() {
             profiling::scope!("build-widgets");
             info!("{}", tree.root());
-            match WidgetCache::update_tree(tree, &mut self.modules) {
+            let mut cache = self.cache.borrow_mut();
+            match cache.update_tree(tree, &mut self.modules_mut()) {
                 Ok(task) => task,
                 Err(e) => {
                     error!("Failed to build widgets: {}", e);
@@ -237,64 +247,19 @@ where
     }
 
     /// Get a reference to the [`ModuleManager`] for registering and instantiating modules at runtime
-    pub fn modules(&mut self) -> &mut ModuleManager {
-        &mut self.modules
+    pub fn modules(&self) -> std::cell::Ref<'_, ModuleManager> {
+        self.modules.borrow()
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn watch_tree_files(&mut self) -> Result<(), Error> {
-        /*
-        self.notify_state.lock().provider_map.clear();
-
-        info!("Walking tree and adding files to watcher");
-
-        for node in self.tree.lock().as_ref().unwrap().root() {
-            match &**node.node().data() {
-                Content::Value(value) => {
-                    if let ValueKind::Dynamic {
-                        provider: Some(provider),
-                        ..
-                    } = value.inner()
-                    {
-                        // Provide an event sender to this Provider
-                        provider
-                            .lock()
-                            .set_event_inlet(self.event_endpoint.get_inlet());
-                    }
-                }
-                _ => {}
-            }
-        }
-        */
-
-        Ok(())
+    /// Get a mutable reference to the [`ModuleManager`] for registering and instantiating modules at runtime
+    pub fn modules_mut(&self) -> std::cell::RefMut<'_, ModuleManager> {
+        self.modules.borrow_mut()
     }
 
-    /*
-    #[cfg(not(target_arch = "wasm32"))]
-    fn init_watcher(mut inlet: Inlet<Event>) -> FsEventWatcher {
-        // Create a filesystem watcher that writes events to a channel
-
-        let watcher = RecommendedWatcher::new(
-            move |res: Result<notify::Event, notify::Error>| {
-                let event = match res {
-                    Ok(fsevent) => Event::FsNotify(fsevent),
-                    Err(e) => {
-                        error!("Watcher error {e:#?}");
-                        Event::FsNotifyError(e.to_string())
-                    }
-                };
-                futures::executor::block_on(async {
-                    inlet.send(event).await.unwrap();
-                })
-            },
-            notify::Config::default(),
-        )
-        .unwrap();
-
-        watcher
+    /// Get a reference to the [`MessageRouter`]
+    pub fn router(&mut self) -> &mut MessageRouter<'static, Task<Message>, Source> {
+        &mut self.router
     }
-    */
 
     /// Load a markup file and set the active [`arbutus`] tree.
     #[cfg(not(target_arch = "wasm32"))]
@@ -302,7 +267,7 @@ where
         use colored::Colorize;
 
         let filename = &PathBuf::from(&filename);
-        let tree = SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?;
+        let tree = SnowcapParser::<Message>::parse_file(&filename)?;
 
         let tree = IndexedTree::from_tree(tree);
 
@@ -316,16 +281,13 @@ where
 
         self.set_tree(tree)?;
 
-        // Register any files referenced by the markup with the watcher
-        self.watch_tree_files()?;
-
         Ok(())
     }
 
     /// Load markup from memory. If a tree is currently loaded, the new tree is diffed
     /// and changes are patched into the existing tree.
     pub fn load_memory(&mut self, data: &str) -> Result<(), Error> {
-        let tree = SnowcapParser::<Message<AppMessage>>::parse_memory(data)?;
+        let tree = SnowcapParser::<Message>::parse_memory(data)?;
 
         if let Some(current) = &mut *self.tree.lock() {
             // We already have a tree loaded. Diff the trees
@@ -345,14 +307,14 @@ where
         Ok(())
     }
 
-    fn set_tree(&mut self, tree: IndexedTree<Message<AppMessage>>) -> Result<(), Error> {
+    fn set_tree(&mut self, tree: IndexedTree) -> Result<(), Error> {
         *self.tree.lock() = Some(tree);
         Ok(())
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn reload_file(&mut self) -> Result<(), Error> {
-        use arbutus::{TreeDiff, TreeNode};
+        use arbutus::TreeDiff;
         use colored::Colorize;
 
         let filename = self.filename.clone().ok_or(Error::MissingAttribute(
@@ -360,8 +322,7 @@ where
         ))?;
 
         // Parse the new file into an IndexedTree
-        let mut new_tree =
-            IndexedTree::from_tree(SnowcapParser::<Message<AppMessage>>::parse_file(&filename)?);
+        let mut new_tree = IndexedTree::from_tree(SnowcapParser::<Message>::parse_file(&filename)?);
 
         let _listener = new_tree
             .on_event(|event| {
@@ -442,14 +403,15 @@ where
         Ok(())
     }
 
+    /*
     fn handle_widget_message(
         &mut self,
         node_id: &NodeId,
         message: &mut WidgetMessage,
     ) -> Task<Message<AppMessage>> {
         info_span!("widget-message").in_scope(|| {
-            info!("Widget Message NodeId: {node_id}");
 
+            // Set the widget as dirty in the tree
             if let Some(node) = self.tree.lock().as_mut().unwrap().get_node_mut(node_id) {
                 node.node_mut().data_mut().set_dirty(true);
             }
@@ -501,51 +463,11 @@ where
             }
         })
     }
-
-    fn handle_event(&mut self, event: Event) -> Task<Message<AppMessage>> {
-        match event {
-            #[cfg(not(target_arch = "wasm32"))]
-            Event::FsNotifyError(e) => {
-                error!("FsNotifyError {e:#?}");
-                Task::none()
-            }
-
-            /*
-            #[cfg(not(target_arch = "wasm32"))]
-            Event::WatchFileRequest { filename, provider } => {
-                info!("{provider:?} register {filename:?} with watcher");
-
-                /*
-                match self
-                    .provider_watcher
-                    .watch(&filename, notify::RecursiveMode::NonRecursive)
-                {
-                    Ok(_) => {
-                        info!("Successfully added {filename:?} to watcher");
-
-                        // Add the Provider to the map
-                        self.notify_state
-                            .lock()
-                            .provider_map
-                            .insert(filename.clone(), provider);
-                    }
-                    Err(e) => {
-                        error!("Failed to add {filename:?} to watcher: {e:#?}")
-                    }
-                }
-                */
-
-                Task::none()
-            }
-            */
-            _ => Task::none(),
-        }
-    }
+    */
 
     #[profiling::function]
-    pub fn update(&mut self, message: &mut Message<AppMessage>) -> Task<Message<AppMessage>> {
-        let _message_type: MessageDiscriminants = (&*message).into();
-
+    pub fn update(&mut self, message: Message) -> Task<Message> {
+        /*
         let task = {
             profiling::scope!("message-dispatch");
 
@@ -597,14 +519,31 @@ where
                     }
                     Task::none()
                 }
+
+                Message::Watcher(msg) => {
+                    println!("WATCHER MESSAGE SNOWCAP HANDLER");
+
+                    Task::none()
+                }
             };
             task
+
+            Task::none()
+        };
+        */
+
+        // Pass the message to the router, and create a batch of returned tasks
+        let router_task = if let Some(tasks) = self.router.handle_message(message) {
+            Task::batch(tasks)
+        } else {
+            Task::none()
         };
 
         let tree_task = if let Some(tree) = &*self.tree.lock() {
             profiling::scope!("build-widgets");
             info!("{}", tree.root());
-            match WidgetCache::update_tree(tree, &mut self.modules) {
+            let mut cache = self.cache.borrow_mut();
+            match cache.update_tree(tree, &mut self.modules_mut()) {
                 Ok(task) => task,
                 Err(e) => {
                     error!("Failed to build widgets: {}", e);
@@ -615,16 +554,21 @@ where
             Task::none()
         };
 
-        tree_task.chain(task)
+        //tree_task.chain(router_task)
+
+        // Run the router tasks, followed by tree update tasks
+        router_task.chain(tree_task)
     }
 
     #[profiling::function]
-    pub fn view<'a>(&'a self) -> iced::Element<'a, Message<AppMessage>> {
+    pub fn view<'b>(&'b self) -> iced::Element<'b, Message> {
         info!("View");
 
         let root = if let Some(tree) = &*self.tree.lock() {
-            if let Some(widget) = &tree.root().node().data().widget {
-                widget.clone().into_element().unwrap()
+            let root_id = tree.root().node().id();
+
+            if let Some(widget) = self.cache.borrow().get(root_id) {
+                widget.into_element().unwrap()
             } else {
                 iced::widget::Text::new("No root widget in tree").into()
             }

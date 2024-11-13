@@ -388,6 +388,9 @@ impl AttributeParser {
             Rule::attr_toggled => Ok(Some(AttributeValue::Toggled(Self::parse_boolean(
                 pair.into_inner().last().unwrap(),
             )?))),
+            Rule::attr_clip => Ok(Some(AttributeValue::Clip(Self::parse_boolean(
+                pair.into_inner().last().unwrap(),
+            )?))),
             Rule::attr_border => {
                 let mut border = iced::Border::default();
                 let options = Self::parse_options(pair.into_inner())?;
@@ -744,6 +747,30 @@ mod tests {
                 )
             }
             _ => panic!("ScrollDirection AttributeValue not found"),
+        }
+    }
+
+    #[traced_test]
+    #[test]
+    fn test_clip() {
+        let attrs = AttributeParser::parse_attributes("clip: true").unwrap();
+        let attr = attrs.get(AttributeKind::Clip).unwrap().unwrap();
+
+        match attr {
+            AttributeValue::Clip(clip) => {
+                assert_eq!(clip, true)
+            }
+            _ => panic!("Clip AttributeValue not found"),
+        }
+
+        let attrs = AttributeParser::parse_attributes("clip: false").unwrap();
+        let attr = attrs.get(AttributeKind::Clip).unwrap().unwrap();
+
+        match attr {
+            AttributeValue::Clip(clip) => {
+                assert_eq!(clip, false)
+            }
+            _ => panic!("Clip AttributeValue not found"),
         }
     }
 }

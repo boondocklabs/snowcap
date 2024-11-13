@@ -5,8 +5,6 @@ use crate::{
     cache::WidgetContent,
     dynamic_widget::DynamicWidget,
     error::ConversionError,
-    message::WidgetMessage,
-    NodeId,
 };
 
 pub struct SnowcapStack;
@@ -17,7 +15,7 @@ impl SnowcapStack {
         contents: WidgetContent<M>,
     ) -> Result<DynamicWidget<M>, ConversionError>
     where
-        M: std::fmt::Debug + From<(NodeId, WidgetMessage)> + 'static,
+        M: std::fmt::Debug + 'static,
     {
         let mut stack = Stack::with_children(contents);
 
