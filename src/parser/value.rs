@@ -8,7 +8,7 @@ use std::{borrow::Borrow, fmt::Write, ops::Deref};
 use strum::EnumDiscriminants;
 use tracing::debug;
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct Value {
     context: Option<ParserContext>,
     inner: ValueData,
@@ -146,6 +146,28 @@ pub enum ValueData {
     Integer(u64),
     Boolean(bool),
     Array(Vec<Value>),
+}
+
+impl Eq for ValueData {}
+
+impl PartialEq for ValueData {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::None, Self::None) => true,
+            (Self::String(a), Self::String(b)) => a == b,
+            (Self::Float(a), Self::Float(b)) => {
+                if a.is_nan() && b.is_nan() {
+                    true
+                } else {
+                    (a - b).abs() < f64::EPSILON
+                }
+            }
+            (Self::Integer(a), Self::Integer(b)) => a == b,
+            (Self::Boolean(a), Self::Boolean(b)) => a == b,
+            (Self::Array(a), Self::Array(b)) => a == b,
+            _ => false,
+        }
+    }
 }
 
 impl std::fmt::Display for ValueData {
@@ -316,6 +338,14 @@ mod tests {
         let value = ValueParser::parse_str(r#""foo""#, &ParserContext::default()).unwrap();
         assert!(value.is_kind(ValueDataKind::String));
         assert_eq!(value.to_string(), "foo");
+
+        // Check true equality
+        let other_value = ValueParser::parse_str(r#""foo""#, &ParserContext::default()).unwrap();
+        assert!(value == other_value);
+
+        // Check false equality
+        let other_value = ValueParser::parse_str(r#""bar""#, &ParserContext::default()).unwrap();
+        assert!(value != other_value);
     }
 
     #[test]
@@ -325,6 +355,14 @@ mod tests {
         let float = value.float();
         assert!(float.is_ok());
         assert!(abs_diff_eq!(float.unwrap(), 3.14));
+
+        // Check true equality
+        let other_value = ValueParser::parse_str("3.14", &ParserContext::default()).unwrap();
+        assert!(value == other_value);
+
+        // Check false equality
+        let other_value = ValueParser::parse_str("3.5", &ParserContext::default()).unwrap();
+        assert!(value != other_value);
 
         // Check negative
         let value = ValueParser::parse_str("-3.14", &ParserContext::default()).unwrap();
@@ -356,6 +394,14 @@ mod tests {
         assert!(integer.is_ok());
         assert!(integer.unwrap() == 3);
 
+        // Check true equality
+        let other_value = ValueParser::parse_str("3", &ParserContext::default()).unwrap();
+        assert!(value == other_value);
+
+        // Check false equality
+        let other_value = ValueParser::parse_str("4", &ParserContext::default()).unwrap();
+        assert!(value != other_value);
+
         let value = ValueParser::parse_str("3.0", &ParserContext::default()).unwrap();
         let integer = value.integer();
         assert!(integer.is_err());
@@ -363,17 +409,23 @@ mod tests {
 
     #[test]
     fn boolean() {
-        let value = ValueParser::parse_str("true", &ParserContext::default()).unwrap();
-        assert!(value.is_kind(ValueDataKind::Boolean));
-        let boolean = value.boolean();
+        let value_true = ValueParser::parse_str("true", &ParserContext::default()).unwrap();
+        assert!(value_true.is_kind(ValueDataKind::Boolean));
+        let boolean = value_true.boolean();
         assert!(boolean.is_ok());
         assert!(boolean.unwrap() == true);
 
-        let value = ValueParser::parse_str("false", &ParserContext::default()).unwrap();
-        assert!(value.is_kind(ValueDataKind::Boolean));
-        let boolean = value.boolean();
+        let value_false = ValueParser::parse_str("false", &ParserContext::default()).unwrap();
+        assert!(value_false.is_kind(ValueDataKind::Boolean));
+        let boolean = value_false.boolean();
         assert!(boolean.is_ok());
         assert!(boolean.unwrap() == false);
+
+        // Check equality
+        assert!(value_true != value_false);
+
+        let other_true = ValueParser::parse_str("true", &ParserContext::default()).unwrap();
+        assert!(value_true == other_true);
     }
 
     #[test]
