@@ -6,9 +6,9 @@ use url::Url;
 
 #[derive(Clone, Debug)]
 pub struct WidgetMessage {
-    node_id: NodeId,
-    element_id: Option<ElementId>,
-    event: WidgetEvent,
+    pub node_id: NodeId,
+    pub element_id: Option<ElementId>,
+    pub event: WidgetEvent,
 }
 
 impl WidgetMessage {

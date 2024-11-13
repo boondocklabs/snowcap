@@ -120,6 +120,7 @@ pub use iced;
 use iced::Task;
 
 use cache::WidgetCache;
+use message::widget::WidgetMessage;
 use message::Command;
 use module::manager::ModuleManager;
 use module::ModuleHandleId;
@@ -173,6 +174,7 @@ pub struct Snowcap {
     cache: Rc<RefCell<WidgetCache>>,
 
     _command_endpoint: Endpoint<'static, Command, Task<Message>, Source>,
+    _widget_endpoint: Endpoint<'static, WidgetMessage, Task<Message>, Source>,
 }
 
 impl Snowcap {
@@ -193,6 +195,23 @@ impl Snowcap {
                 Command::Reload => todo!(),
             });
 
+        // Create an endpoint listening for WidgetMessage messages, which finds the node
+        // in the tree, and marks it as dirty.
+        let _tree = tree.clone();
+        let widget_endpoint =
+            router
+                .create_endpoint::<WidgetMessage>()
+                .message(move |_source, message| {
+                    let mut guard = _tree.lock();
+                    let tree: &mut IndexedTree = guard.as_mut().unwrap();
+
+                    if let Some(node) = tree.get_node_mut(&message.node_id) {
+                        // Mark the node as dirty
+                        node.node_mut().data_mut().set_dirty(true);
+                    }
+                    Task::none()
+                });
+
         let snow = Self {
             tree,
             #[cfg(not(target_arch = "wasm32"))]
@@ -201,6 +220,7 @@ impl Snowcap {
             watcher: None,
             router,
             _command_endpoint: command_endpoint,
+            _widget_endpoint: widget_endpoint,
             cache: Rc::new(RefCell::new(WidgetCache::default())),
         };
 
