@@ -97,7 +97,7 @@ impl std::hash::Hash for SnowcapNode {
 impl std::fmt::Display for SnowcapNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let attr_display = if self.attrs.len() > 0 {
-            format!("{:?}", self.attrs)
+            format!("{}", self.attrs)
         } else {
             "".into()
         };

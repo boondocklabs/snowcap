@@ -9,7 +9,7 @@ use salish::Message;
 use tracing::{debug, debug_span, instrument};
 
 use crate::{
-    attribute::Attributes,
+    attribute::{Attribute, AttributeValue, Attributes},
     conversion::{
         column::SnowcapColumn, container::SnowcapContainer, row::SnowcapRow, stack::SnowcapStack,
         widget::SnowcapWidget,
@@ -175,6 +175,20 @@ where
             match node.data().get_state() {
                 State::New => {
                     let data = node.data_mut();
+
+                    for attr in &data.attrs {
+                        if let Some(module) = attr.module() {
+                            let (handle_id, task) =
+                                modules.instantiate(module.name(), module.args().clone())?;
+
+                            debug!(
+                                "Started attribute module '{}' HandleId: {handle_id}",
+                                module.name()
+                            );
+                            tasks.push(task);
+                        }
+                    }
+
                     // Check if this node is a Module, and instantiate the module
                     if let Content::Module(module) = data.content_mut() {
                         let args = module.args().clone();

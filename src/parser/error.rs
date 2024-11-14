@@ -8,6 +8,8 @@ use std::{
 
 use thiserror::Error;
 
+use crate::SyncError;
+
 use super::{ParserContext, Rule};
 
 #[derive(Error, Debug)]
@@ -129,6 +131,9 @@ pub enum ParseError {
 
     #[error(transparent)]
     Borrow(#[from] std::cell::BorrowMutError),
+
+    #[error(transparent)]
+    Sync(#[from] SyncError),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),

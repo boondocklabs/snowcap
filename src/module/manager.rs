@@ -14,7 +14,6 @@ use std::{any::Any, collections::HashMap, sync::Arc};
 
 use arbutus::{TreeNode as _, TreeNodeRef as _};
 use iced::Task;
-use parking_lot::Mutex;
 use salish::{endpoint::Endpoint, filter::SourceFilter, router::MessageRouter, Message};
 use tracing::{debug, error, warn};
 
@@ -95,8 +94,6 @@ impl ModuleManager {
 
         self._ep.push(Box::new(data_endpoint));
         */
-
-        println!("DONE");
     }
 
     /// Register a module with the global [`ModuleRegistry`]
@@ -109,6 +106,9 @@ impl ModuleManager {
         ModuleRegistry::register::<super::file::FileModule>("file");
         ModuleRegistry::register::<super::http::HttpModule>("http");
         ModuleRegistry::register::<super::timing::TimingModule>("timing");
+        ModuleRegistry::register::<super::sub::SubModule>("sub");
+
+        println!("{}", ModuleRegistry);
     }
 
     /// Create a new module instance, start it, and return a tuple of the [`ModuleHandleId`] and init [`iced::Task`]

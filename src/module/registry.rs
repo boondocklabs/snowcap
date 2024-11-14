@@ -47,6 +47,23 @@ pub struct ModuleDescriptor {
 
 pub struct ModuleRegistry;
 
+impl std::fmt::Display for ModuleRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", "--- Avaiable Modules:\n".bright_white())?;
+
+        if let Ok(guard) = MODULE_REGISTRY.lock() {
+            let mut keys: Vec<&String> = guard.keys().collect();
+            keys.sort();
+            keys.iter()
+                .try_for_each(|k| write!(f, "{} {}\n", "|".bright_white(), k.cyan()))?;
+        }
+
+        write!(f, "{}", "---".bright_white())?;
+
+        Ok(())
+    }
+}
+
 impl ModuleRegistry {
     /// Register a [`ModuleDescriptor`] with the global module registry
     pub fn register_descriptor(descriptor: ModuleDescriptor) {

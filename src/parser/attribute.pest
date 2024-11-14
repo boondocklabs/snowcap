@@ -30,7 +30,7 @@ direction_vertical   = { ^"vertical" }
 both                 = { ^"both" }
 
 // Delimiter
-delimiter = { ":" }
+delimiter = _{ ":" }
 
 attributes = _{
     attr_padding

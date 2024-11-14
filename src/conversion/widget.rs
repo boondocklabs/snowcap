@@ -142,24 +142,26 @@ impl SnowcapWidget {
                 //TODO add shaping, font
 
                 for attr in attrs {
-                    (text, style) = match *attr {
-                        AttributeValue::TextColor(color) => {
+                    (text, style) = match attr.value().cloned() {
+                        Some(AttributeValue::TextColor(color)) => {
                             style.color = Some(color);
                             (text.color(color), style)
                         }
-                        AttributeValue::HorizontalAlignment(horizontal) => {
+                        Some(AttributeValue::HorizontalAlignment(horizontal)) => {
                             (text.align_x(horizontal), style)
                         }
-                        AttributeValue::VerticalAlignment(vertical) => {
+                        Some(AttributeValue::VerticalAlignment(vertical)) => {
                             (text.align_y(vertical), style)
                         }
-                        AttributeValue::WidthLength(length) => (text.width(length), style),
-                        AttributeValue::WidthPixels(pixels) => (text.width(pixels), style),
-                        AttributeValue::HeightLength(length) => (text.height(length), style),
-                        AttributeValue::HeightPixels(pixels) => (text.height(pixels), style),
-                        AttributeValue::Size(pixels) => (text.size(pixels), style),
-                        AttributeValue::Wrapping(wrapping) => (text.wrapping(wrapping), style),
-                        AttributeValue::Shaping(shaping) => (text.shaping(shaping), style),
+                        Some(AttributeValue::WidthLength(length)) => (text.width(length), style),
+                        Some(AttributeValue::WidthPixels(pixels)) => (text.width(pixels), style),
+                        Some(AttributeValue::HeightLength(length)) => (text.height(length), style),
+                        Some(AttributeValue::HeightPixels(pixels)) => (text.height(pixels), style),
+                        Some(AttributeValue::Size(pixels)) => (text.size(pixels), style),
+                        Some(AttributeValue::Wrapping(wrapping)) => {
+                            (text.wrapping(wrapping), style)
+                        }
+                        Some(AttributeValue::Shaping(shaping)) => (text.shaping(shaping), style),
                         _ => {
                             warn!("Unsupported Text attribute {:?}", attr);
                             (text, style)
@@ -187,12 +189,12 @@ impl SnowcapWidget {
                 });
 
                 for attr in attrs {
-                    button = match *attr {
-                        AttributeValue::HeightLength(height) => button.height(height),
-                        AttributeValue::HeightPixels(height) => button.height(height),
-                        AttributeValue::WidthLength(width) => button.width(width),
-                        AttributeValue::WidthPixels(width) => button.width(width),
-                        AttributeValue::Padding(padding) => button.padding(padding),
+                    button = match attr.value().cloned() {
+                        Some(AttributeValue::HeightLength(height)) => button.height(height),
+                        Some(AttributeValue::HeightPixels(height)) => button.height(height),
+                        Some(AttributeValue::WidthLength(width)) => button.width(width),
+                        Some(AttributeValue::WidthPixels(width)) => button.width(width),
+                        Some(AttributeValue::Padding(padding)) => button.padding(padding),
                         _ => button,
                     }
                 }
@@ -229,10 +231,10 @@ impl SnowcapWidget {
                 )));
 
                 for attr in attrs {
-                    slider = match *attr {
-                        AttributeValue::HeightPixels(height) => slider.height(height),
-                        AttributeValue::WidthLength(width) => slider.width(width),
-                        AttributeValue::WidthPixels(width) => slider.width(width),
+                    slider = match attr.value().cloned() {
+                        Some(AttributeValue::HeightPixels(height)) => slider.height(height),
+                        Some(AttributeValue::WidthLength(width)) => slider.width(width),
+                        Some(AttributeValue::WidthPixels(width)) => slider.width(width),
                         _ => slider,
                     }
                 }
@@ -268,10 +270,10 @@ impl SnowcapWidget {
                     )));
 
                 for attr in attrs {
-                    slider = match *attr {
-                        AttributeValue::HeightLength(height) => slider.height(height),
-                        AttributeValue::HeightPixels(height) => slider.height(height),
-                        AttributeValue::WidthPixels(width) => slider.width(width),
+                    slider = match attr.value().cloned() {
+                        Some(AttributeValue::HeightLength(height)) => slider.height(height),
+                        Some(AttributeValue::HeightPixels(height)) => slider.height(height),
+                        Some(AttributeValue::WidthPixels(width)) => slider.width(width),
                         _ => slider,
                     }
                 }
@@ -292,13 +294,13 @@ impl SnowcapWidget {
                     );
 
                     for attr in attrs {
-                        scroll = match (*attr).clone() {
-                            AttributeValue::HeightLength(height) => scroll.height(height),
-                            AttributeValue::HeightPixels(height) => scroll.height(height),
-                            AttributeValue::WidthLength(width) => scroll.width(width),
-                            AttributeValue::WidthPixels(width) => scroll.width(width),
-                            AttributeValue::Spacing(spacing) => scroll.spacing(spacing),
-                            AttributeValue::ScrollDirection(direction) => {
+                        scroll = match attr.value().cloned() {
+                            Some(AttributeValue::HeightLength(height)) => scroll.height(height),
+                            Some(AttributeValue::HeightPixels(height)) => scroll.height(height),
+                            Some(AttributeValue::WidthLength(width)) => scroll.width(width),
+                            Some(AttributeValue::WidthPixels(width)) => scroll.width(width),
+                            Some(AttributeValue::Spacing(spacing)) => scroll.spacing(spacing),
+                            Some(AttributeValue::ScrollDirection(direction)) => {
                                 scroll.direction(direction)
                             }
                             _ => todo!(),
@@ -333,10 +335,10 @@ impl SnowcapWidget {
                 });
 
                 for attr in attrs {
-                    toggler = match (*attr).clone() {
-                        AttributeValue::Size(pixels) => toggler.size(pixels),
-                        AttributeValue::Label(label) => toggler.label(label),
-                        AttributeValue::Toggled(_) => toggler,
+                    toggler = match attr.value().cloned() {
+                        Some(AttributeValue::Size(pixels)) => toggler.size(pixels),
+                        Some(AttributeValue::Label(label)) => toggler.label(label),
+                        Some(AttributeValue::Toggled(_)) => toggler,
                         _ => todo!(),
                     };
                 }

@@ -4,7 +4,6 @@
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
-    ops::Deref,
     sync::Arc,
     time::Duration,
 };
@@ -18,10 +17,12 @@ use crate::{parser::module::Module, SyncError};
 mod hash;
 
 /// All possible [`Attribute`] inner values
-#[derive(Debug, Clone, EnumDiscriminants, PartialEq)]
+#[derive(Default, Debug, Clone, EnumDiscriminants, PartialEq)]
 #[strum_discriminants(derive(EnumIter, Hash, PartialOrd, Ord))]
 #[strum_discriminants(name(AttributeKind))]
 pub enum AttributeValue {
+    #[default]
+    None,
     /// Text Color sRGB color space
     TextColor(iced::Color),
     /// Border which can be applied to styles
@@ -72,9 +73,6 @@ pub enum AttributeValue {
     SliderValue(i32),
     /// Scroll Direction
     ScrollDirection(iced::widget::scrollable::Direction),
-
-    /// Attribute is attached to a Module
-    Module { kind: AttributeKind, module: Module },
 }
 
 impl AttributeValue {
@@ -131,7 +129,7 @@ impl Attributes {
     /// Get an [`AttributeValue`] from the set of [`Attributes'] for the specified [`AttributeKind`]
     pub fn get(&self, kind: AttributeKind) -> Result<Option<AttributeValue>, SyncError> {
         match self.0.try_read_for(Duration::from_secs(1)) {
-            Some(guard) => Ok(guard.get(&kind).map(|attr| attr.value().clone())),
+            Some(guard) => Ok(guard.get(&kind).and_then(|attr| attr.value().cloned())),
             None => Err(SyncError::Deadlock(format!(
                 "RwLock read lock failed in Attributes::get() {:?}",
                 kind
@@ -142,7 +140,7 @@ impl Attributes {
     pub fn set(&self, value: AttributeValue) -> Result<(), SyncError> {
         match self.0.try_write_for(Duration::from_secs(1)) {
             Some(mut guard) => {
-                guard.insert(value.kind(), Attribute::new(value));
+                guard.insert(value.kind(), Attribute::from(value));
                 Ok(())
             }
             None => Err(SyncError::Deadlock(format!(
@@ -203,7 +201,7 @@ impl std::fmt::Display for Attributes {
         let mut iter = self.into_iter().peekable();
         loop {
             if let Some(attr) = iter.next() {
-                write!(f, "{:?}", attr.value())?;
+                write!(f, "{}", attr)?;
                 if iter.peek().is_some() {
                     write!(f, ", ")?;
                 }
@@ -298,9 +296,25 @@ impl<'a> Iterator for AttributeIter {
 /// for tree diffing to detect changes in attribute values.
 #[derive(Debug, Clone, Hash)]
 pub struct Attribute {
-    value: AttributeValue,
+    /// The [`AttributeValue`] of this attribute.
+    /// May be parsed from grammar or dynamically updated from a [`Module`]
+    kind: AttributeKind,
+    value: Option<AttributeValue>,
+    module: Option<Module>,
 }
 
+impl std::fmt::Display for Attribute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(module) = self.module() {
+            write!(f, "{:?}: {}", self.kind, module)?;
+        } else {
+            write!(f, "{:?}", self.value())?;
+        }
+        Ok(())
+    }
+}
+
+/*
 impl Deref for Attribute {
     type Target = AttributeValue;
 
@@ -308,21 +322,58 @@ impl Deref for Attribute {
         &self.value
     }
 }
+*/
+
+impl From<AttributeValue> for Attribute {
+    fn from(value: AttributeValue) -> Self {
+        Attribute::new(value.kind()).with_value(value)
+    }
+}
 
 impl Attribute {
     /// Return a reference to the inner [`AttributeValue`'] for this Attribute
-    pub fn value<'a>(&'a self) -> &'a AttributeValue {
-        &self.value
+    pub fn value<'a>(&'a self) -> Option<&'a AttributeValue> {
+        self.value.as_ref()
     }
 
     /// Return a mutable reference to the inner [`AttributeValue`'] for this Attribute
-    pub fn value_mut<'a>(&'a mut self) -> &'a mut AttributeValue {
-        &mut self.value
+    pub fn value_mut<'a>(&'a mut self) -> Option<&'a mut AttributeValue> {
+        self.value.as_mut()
     }
 
     /// Create a new [`Attribute`] with the provided [`AttributeValue`]
-    pub fn new(value: AttributeValue) -> Self {
-        Self { value }
+    pub fn new(kind: AttributeKind) -> Self {
+        Self {
+            kind,
+            value: None,
+            module: None,
+        }
+    }
+
+    /// Add an [`AttributeValue`] to this [`Attribute`]
+    pub fn with_value(mut self, value: AttributeValue) -> Self {
+        self.value = Some(value);
+        self
+    }
+
+    /// Add a [`Module`] to this [`Attribute`]
+    pub fn with_module(mut self, module: Module) -> Self {
+        self.module = Some(module);
+        self
+    }
+
+    /// Return true if this attribute has an attached module
+    pub fn has_module(&self) -> bool {
+        self.module.is_some()
+    }
+
+    pub fn module(&self) -> Option<&Module> {
+        self.module.as_ref()
+    }
+
+    /// Get the [`AttributeKind`] of this [`Attribute`]
+    pub fn kind(&self) -> AttributeKind {
+        self.kind
     }
 
     /// Get the Xxh64 hash of this attribute, including the inner values
@@ -346,12 +397,12 @@ mod attribute_tests {
     fn test_attribute() {
         let mut attrs = Attributes::new();
 
-        let attr = Attribute::new(AttributeValue::Clip(true));
+        let attr = Attribute::from(AttributeValue::Clip(true));
         attrs.push(attr).unwrap();
         assert!(attrs.len() == 1);
 
         // Pushing the same attribute should not change the length
-        let attr = Attribute::new(AttributeValue::Clip(true));
+        let attr = Attribute::from(AttributeValue::Clip(true));
         attrs.push(attr).unwrap();
         assert!(attrs.len() == 1);
 
@@ -363,13 +414,13 @@ mod attribute_tests {
     #[traced_test]
     #[test]
     fn test_attribute_hash() {
-        let a = Attribute::new(AttributeValue::Clip(true));
-        let b = Attribute::new(AttributeValue::Clip(false));
+        let a = Attribute::from(AttributeValue::Clip(true));
+        let b = Attribute::from(AttributeValue::Clip(false));
 
         assert_ne!(a.xxhash(), b.xxhash());
 
-        let a = Attribute::new(AttributeValue::Clip(true));
-        let b = Attribute::new(AttributeValue::Clip(true));
+        let a = Attribute::from(AttributeValue::Clip(true));
+        let b = Attribute::from(AttributeValue::Clip(true));
 
         assert_eq!(a.xxhash(), b.xxhash());
     }

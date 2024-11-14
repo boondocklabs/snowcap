@@ -3,6 +3,7 @@
 //! * file
 //! * http
 //! * timing
+//! * sub
 
 pub mod argument;
 pub mod dispatch;
@@ -15,9 +16,12 @@ pub mod registry;
 
 pub mod file;
 pub mod http;
+pub mod sub;
 pub mod timing;
 
 pub mod data;
+
+pub mod prelude;
 
 #[cfg(test)]
 mod tests;

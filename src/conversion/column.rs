@@ -20,16 +20,16 @@ impl SnowcapColumn {
         let mut col = Column::with_children(contents);
 
         for attr in attrs {
-            col = match *attr {
-                AttributeValue::HorizontalAlignment(horizontal) => col.align_x(horizontal),
-                AttributeValue::Padding(padding) => col.padding(padding),
-                AttributeValue::WidthLength(length) => col.width(length),
-                AttributeValue::HeightLength(length) => col.height(length),
-                AttributeValue::WidthPixels(length) => col.width(length),
-                AttributeValue::HeightPixels(length) => col.height(length),
-                AttributeValue::Spacing(pixels) => col.spacing(pixels),
-                AttributeValue::MaxWidth(length) => col.max_width(length),
-                AttributeValue::Clip(clip) => col.clip(clip),
+            col = match attr.value().cloned() {
+                Some(AttributeValue::HorizontalAlignment(horizontal)) => col.align_x(horizontal),
+                Some(AttributeValue::Padding(padding)) => col.padding(padding),
+                Some(AttributeValue::WidthLength(length)) => col.width(length),
+                Some(AttributeValue::HeightLength(length)) => col.height(length),
+                Some(AttributeValue::WidthPixels(length)) => col.width(length),
+                Some(AttributeValue::HeightPixels(length)) => col.height(length),
+                Some(AttributeValue::Spacing(pixels)) => col.spacing(pixels),
+                Some(AttributeValue::MaxWidth(length)) => col.max_width(length),
+                Some(AttributeValue::Clip(clip)) => col.clip(clip),
                 _ => return Err(ConversionError::UnsupportedAttribute(attr, "Column".into())),
             };
         }

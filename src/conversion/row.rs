@@ -20,20 +20,20 @@ impl SnowcapRow {
         let mut row = Row::with_children(contents);
 
         for attr in attrs {
-            row = match *attr {
-                AttributeValue::VerticalAlignment(vertical) => row.align_y(vertical),
+            row = match attr.value().cloned() {
+                Some(AttributeValue::VerticalAlignment(vertical)) => row.align_y(vertical),
 
                 // TODO: Clean this up. align:center creates a HorizontalAlignment::Center attribute
-                AttributeValue::HorizontalAlignment(_) => {
+                Some(AttributeValue::HorizontalAlignment(_)) => {
                     row.align_y(iced::alignment::Vertical::Center)
                 }
-                AttributeValue::Padding(padding) => row.padding(padding),
-                AttributeValue::WidthLength(length) => row.width(length),
-                AttributeValue::HeightLength(length) => row.height(length),
-                AttributeValue::WidthPixels(pixels) => row.width(pixels),
-                AttributeValue::HeightPixels(pixels) => row.height(pixels),
-                AttributeValue::Spacing(pixels) => row.spacing(pixels),
-                AttributeValue::Clip(clip) => row.clip(clip),
+                Some(AttributeValue::Padding(padding)) => row.padding(padding),
+                Some(AttributeValue::WidthLength(length)) => row.width(length),
+                Some(AttributeValue::HeightLength(length)) => row.height(length),
+                Some(AttributeValue::WidthPixels(pixels)) => row.width(pixels),
+                Some(AttributeValue::HeightPixels(pixels)) => row.height(pixels),
+                Some(AttributeValue::Spacing(pixels)) => row.spacing(pixels),
+                Some(AttributeValue::Clip(clip)) => row.clip(clip),
                 _ => {
                     warn!("Unsupported Row attribute {:#?}", attr);
                     row

@@ -17,22 +17,26 @@ impl SnowcapContainer {
         let mut style = iced::widget::container::Style::default();
 
         for attr in attrs {
-            (container, style) = match *attr {
-                AttributeValue::TextColor(color) => (container, style.color(color)),
-                AttributeValue::Border(border) => (container, style.border(border)),
-                AttributeValue::Shadow(shadow) => (container, style.shadow(shadow)),
-                AttributeValue::Background(background) => (container, style.background(background)),
-                AttributeValue::HorizontalAlignment(horizontal) => {
+            (container, style) = match attr.value().cloned() {
+                Some(AttributeValue::TextColor(color)) => (container, style.color(color)),
+                Some(AttributeValue::Border(border)) => (container, style.border(border)),
+                Some(AttributeValue::Shadow(shadow)) => (container, style.shadow(shadow)),
+                Some(AttributeValue::Background(background)) => {
+                    (container, style.background(background))
+                }
+                Some(AttributeValue::HorizontalAlignment(horizontal)) => {
                     (container.align_x(horizontal), style)
                 }
-                AttributeValue::VerticalAlignment(vertical) => (container.align_y(vertical), style),
-                AttributeValue::Padding(padding) => (container.padding(padding), style),
-                AttributeValue::MaxWidth(pixels) => (container.max_width(pixels), style),
-                AttributeValue::WidthLength(length) => (container.width(length), style),
-                AttributeValue::HeightLength(length) => (container.height(length), style),
-                AttributeValue::WidthPixels(pixels) => (container.width(pixels), style),
-                AttributeValue::HeightPixels(pixels) => (container.height(pixels), style),
-                AttributeValue::Clip(clip) => (container.clip(clip), style),
+                Some(AttributeValue::VerticalAlignment(vertical)) => {
+                    (container.align_y(vertical), style)
+                }
+                Some(AttributeValue::Padding(padding)) => (container.padding(padding), style),
+                Some(AttributeValue::MaxWidth(pixels)) => (container.max_width(pixels), style),
+                Some(AttributeValue::WidthLength(length)) => (container.width(length), style),
+                Some(AttributeValue::HeightLength(length)) => (container.height(length), style),
+                Some(AttributeValue::WidthPixels(pixels)) => (container.width(pixels), style),
+                Some(AttributeValue::HeightPixels(pixels)) => (container.height(pixels), style),
+                Some(AttributeValue::Clip(clip)) => (container.clip(clip), style),
                 _ => {
                     return Err(ConversionError::UnsupportedAttribute(
                         attr,

@@ -328,30 +328,6 @@ impl AttributeParser {
     }
 
     fn parse_attribute(pair: Pair<'_, Rule>) -> Result<Option<AttributeValue>, ParseError> {
-        // Check if this pair contains a module
-        let mut inner = pair.clone().into_inner();
-        let module = inner.find(|pair| {
-            if pair.as_rule() == Rule::module {
-                true
-            } else {
-                false
-            }
-        });
-
-        // If we found a module, parse it and return [`AttributeValue::Module`]
-        if let Some(module) = module {
-            let kind = Self::pair_kind(&pair)?;
-            let mut module = ModuleParser::parse_str(module.as_str(), ParserContext::default())?;
-
-            // Insert module arguments
-            module.args_mut().insert(ModuleArgument::new(
-                "_attribute".into(),
-                Value::new_attribute_kind(kind),
-            ));
-
-            return Ok(Some(AttributeValue::Module { kind, module }));
-        }
-
         match pair.as_rule() {
             Rule::attr_background => Ok(Some(Self::parse_background(pair.into_inner())?)),
             Rule::attr_text_color => {
@@ -508,6 +484,25 @@ impl AttributeParser {
         Ok(options)
     }
 
+    pub fn parse_module(attr: Pair<Rule>, module: Pair<Rule>) -> Result<Attribute, ParseError> {
+        let kind = Self::pair_kind(&attr)?;
+
+        let mut module = ModuleParser::parse_str(module.as_str(), ParserContext::default())?;
+
+        // Insert module arguments
+        module.args_mut().insert(ModuleArgument::new(
+            "_attribute".into(),
+            Value::new_bool(true),
+        ));
+
+        module.args_mut().insert(ModuleArgument::new(
+            "_attribute_kind".into(),
+            Value::new_attribute_kind(kind),
+        ));
+
+        Ok(Attribute::new(kind).with_module(module))
+    }
+
     pub fn parse_attributes(data: &str) -> Result<Attributes, ParseError> {
         let attributes: Result<Attributes, ParseError> =
             debug_span!("AttributeParser").in_scope(|| {
@@ -521,11 +516,25 @@ impl AttributeParser {
                     match pair.as_rule() {
                         Rule::attribute_list => {
                             for pair in pair.into_inner() {
-                                //debug!("{:#?}", pair);
-                                if let Some(value) = Self::parse_attribute(pair)? {
-                                    attributes.push(Attribute::new(value)).unwrap();
+                                // Check if this pair contains a module
+                                let mut inner = pair.clone().into_inner();
+                                let module = inner.find(|pair| {
+                                    if pair.as_rule() == Rule::module {
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                });
+
+                                if let Some(module) = module {
+                                    let attribute = Self::parse_module(pair, module)?;
+                                    attributes.push(attribute)?;
                                 } else {
-                                    break;
+                                    if let Some(value) = Self::parse_attribute(pair)? {
+                                        attributes.push(Attribute::from(value))?;
+                                    } else {
+                                        break;
+                                    }
                                 }
                             }
                         }

@@ -1,7 +1,10 @@
 //! Hashing functions for [`iced`] types which do not implement [`std::hash::Hash`]
 //! and impl of [`std::hash::Hash`] on [`AttributeValue`]
 
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    mem,
+};
 
 use super::AttributeValue;
 
@@ -101,7 +104,13 @@ fn hash_theme<H: Hasher>(theme: &iced::Theme, state: &mut H) {
 
 impl std::hash::Hash for AttributeValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        // Hash the discriminant, then the contents
+        // to ensure the same values under a different
+        // variant are unique
+        mem::discriminant(self).hash(state);
+
         match self {
+            AttributeValue::None => {}
             AttributeValue::TextColor(color) => hash_color(color, state),
             AttributeValue::Border(border) => hash_border(border, state),
             AttributeValue::Shadow(shadow) => hash_shadow(shadow, state),
@@ -127,10 +136,6 @@ impl std::hash::Hash for AttributeValue {
             AttributeValue::Shaping(shaping) => shaping.hash(state),
             AttributeValue::SliderValue(value) => value.hash(state),
             AttributeValue::ScrollDirection(direction) => hash_direction(direction, state),
-            AttributeValue::Module { kind, module } => {
-                kind.hash(state);
-                module.hash(state);
-            }
         }
     }
 }
